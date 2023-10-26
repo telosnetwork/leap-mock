@@ -9,6 +9,9 @@ import { Command, Option } from 'commander';
 const shipAbiString = loadAbi();
 const shipAbi = JSON.parse(shipAbiString);
 
+let shipPort = 29999;
+let controlPort = 6970;
+
 const program = new Command();
 
 const isoDateOption = new Option('-s, --startTime <startTime>', 'Start time in ISO format')
@@ -24,11 +27,21 @@ program
     .command('run <startBlock> <endBlock>')
     .addOption(isoDateOption)
     .option('-c, --chainId [chainId]', 'Chain ID')
+    .option('-S, --shipPort [shipPort]', 'Mock state history websocket port')
+    .option('-C, --controlPort [controlPort]', 'Control http port')
     .action((startBlock, endBlock, options) => {
+        if (options.shipPort)
+            shipPort = parseInt(options.shipPort, 10);
+
+        if (options.controlPort)
+            controlPort = parseInt(options.controlPort, 10);
+
         console.log(`startBlock: ${startBlock}`);
         console.log(`endBlock: ${endBlock}`);
         console.log(`startTime: ${options.startTime || 'None'}`);
         console.log(`chainId: ${options.chainId || 'None'}`);
+        console.log(`shipPort: ${shipPort}`);
+        console.log(`controlPort: ${controlPort}`);
         chain = new MockChain(
             options.chainId ? options.chainId : randomHash(),
             options.startTime ? options.startTime : new Date().toISOString(),
@@ -42,9 +55,9 @@ program.parse(process.argv);
 
 // Mock chain session endpoint
 
-const chainWss = new WebSocket.WebSocketServer({ port: 29999 });
+const chainWss = new WebSocket.WebSocketServer({port: shipPort});
 
-console.log('opening websocket...')
+console.log(`Opening mock ship websocket at ${shipPort}...`)
 chainWss.on('connection', (ws) => {
     ws.on('message', async (message) => {
         const request = Serializer.decode({type: "request", abi: shipAbi, data: message as Buffer});
@@ -92,10 +105,14 @@ app.post('/set_block', (req: Request, res: Response) => {
         case "setBlock":
             chain.setBlock(data.args.num);
             break;
+
+        case "setJumps":
+            chain.jumps = data.args.jumps;
+            break;
     }
     res.json({ result: 'ok'});
 });
 
-app.listen(6970, () => {
-    console.log('Control server running on http://localhost:6970');
+app.listen(controlPort, () => {
+    console.log(`Control server running on http://localhost:${controlPort}`);
 });

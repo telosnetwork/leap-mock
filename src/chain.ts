@@ -10,7 +10,8 @@ export class MockChain {
     private chainId: string;
     private startTime: string;
     private blockInfo: string[];
-    private jumps;
+
+    public jumps;
 
     private clientAckBlock: number;
     private nextBlock: number;
