@@ -86,7 +86,7 @@ export class MockChain {
         const blockTimestamp = new Date(this.startTime);
         blockTimestamp.setSeconds(blockTimestamp.getSeconds() + (blockNum / 2));
 
-        const prevHash = this.getBlockHash(blockNum);
+        const prevHash = this.getBlockHash(blockNum - 1);
 
         return {
             "timestamp": blockTimestamp.toISOString().slice(0, -1),
