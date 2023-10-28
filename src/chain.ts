@@ -34,7 +34,7 @@ export class MockChain {
         this.clientAckBlock = this.startBlock - 1;
         this.nextBlock = this.startBlock;
 
-        this.jumps = {};
+        this.jumps = [];
         this.jumpIndex = 0;
 
         this.blockInfo = [];
@@ -173,10 +173,9 @@ export class MockChain {
 
         this.nextBlock++;
 
-        if (this.nextBlock in this.jumps) {
+        if (this.nextBlock == this.jumps[this.jumpIndex]) {
             const currBlock = this.nextBlock;
-            this.setBlock(this.jumps[currBlock]);
-            delete this.jumps[currBlock];
+            this.setBlock(this.jumps[this.jumpIndex]);
             this.jumpIndex++;
         }
     }
