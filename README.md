@@ -16,5 +16,5 @@
     # to change head block num
     curl -X POST \
         -H 'Content-Type: application/json' \
-        -d '{"method": "setBlock", "args": {"num": 10}}' \
+        -d '{"num": 10}' \
         http://localhost:6970/set_block

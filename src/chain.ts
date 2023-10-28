@@ -9,9 +9,10 @@ export class MockChain {
     private shipAbi: ABI;
     private chainId: string;
     private startTime: string;
-    private blockInfo: string[];
+    private blockInfo: string[][];
 
-    public jumps;
+    private jumps;
+    private jumpIndex;
 
     private clientAckBlock: number;
     private nextBlock: number;
@@ -34,16 +35,37 @@ export class MockChain {
         this.nextBlock = this.startBlock;
 
         this.jumps = {};
+        this.jumpIndex = 0;
+
         this.blockInfo = [];
+
+        const randBlocks = [];
         for (let i = startBlock - 1; i <= endBlock; i++)
-            this.blockInfo.push(randomHash());
+            randBlocks.push(randomHash());
+
+        this.setBlockInfo(randBlocks, 0);
+    }
+
+    setJumps(jumps, index) {
+        this.jumpIndex = 0;
+        this.jumps = jumps;
+    }
+
+    setBlockInfo(blocks: string[], index: number) {
+        if (index > this.blockInfo.length)
+            throw new Error("Tried to set index out of order");
+
+        if (index == this.blockInfo.length)
+            this.blockInfo.push(blocks);
+        else
+            this.blockInfo[index] = blocks;
     }
 
     getBlockHash(blockNum: number) {
         if (blockNum < (this.startBlock - 1) || blockNum > this.endBlock)
             throw new Error("Invalid range");
 
-        return this.blockInfo[blockNum - this.startBlock + 1];
+        return this.blockInfo[this.jumpIndex][blockNum - this.startBlock + 1];
     }
 
     getLibBlock(blockNum: number) {
@@ -155,6 +177,7 @@ export class MockChain {
             const currBlock = this.nextBlock;
             this.setBlock(this.jumps[currBlock]);
             delete this.jumps[currBlock];
+            this.jumpIndex++;
         }
     }
 

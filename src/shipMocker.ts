@@ -107,13 +107,13 @@ app.post('/set_block', (req: Request, res: Response) => {
 
 app.post('/set_jumps', (req: Request, res: Response) => {
     const data = req.body;
-    chain.jumps = data.jumps;
+    chain.setJumps(data.jumps, data.index);
     res.json({ result: 'ok'});
 });
 
 app.post('/set_block_info', (req: Request, res: Response) => {
     const data = req.body;
-    chain.blockInfo = data.blocks;
+    chain.setBlockInfo(data.blocks, data.index);
     res.json({ result: 'ok'});
 });
 
