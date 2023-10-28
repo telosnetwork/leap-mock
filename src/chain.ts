@@ -176,9 +176,9 @@ export class MockChain {
 
         this.nextBlock++;
 
-        if (this.nextBlock == this.jumps[this.jumpIndex]) {
+        if (this.nextBlock == this.jumps[this.jumpIndex][0]) {
             const currBlock = this.nextBlock;
-            this.setBlock(this.jumps[this.jumpIndex]);
+            this.setBlock(this.jumps[this.jumpIndex][1]);
             this.jumpIndex++;
         }
     }
