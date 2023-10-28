@@ -46,9 +46,10 @@ export class MockChain {
         this.setBlockInfo(randBlocks, 0);
     }
 
-    setJumps(jumps, index) {
+    setJumps(jumps: [number, number][], index: number) {
         this.jumpIndex = 0;
         this.jumps = jumps;
+        console.log(`CONTROL: set jumps array of size ${jumps.length} index ${index}`);
     }
 
     setBlockInfo(blocks: string[], index: number) {
@@ -59,6 +60,8 @@ export class MockChain {
             this.blockInfo.push(blocks);
         else
             this.blockInfo[index] = blocks;
+
+        console.log(`CONTROL: set blocks array of size ${blocks.length} index ${index}`);
     }
 
     getBlockHash(blockNum: number) {

@@ -120,3 +120,5 @@ app.post('/set_block_info', (req: Request, res: Response) => {
 app.listen(controlPort, () => {
     console.log(`Control server running on http://localhost:${controlPort}`);
 });
+
+console.log('Ship mocker ready!');
