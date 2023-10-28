@@ -101,15 +101,13 @@ app.use(bodyParser.json());
 
 app.post('/set_block', (req: Request, res: Response) => {
     const data = req.body;
-    switch (data.method) {
-        case "setBlock":
-            chain.setBlock(data.args.num);
-            break;
+    chain.setBlock(data.num);
+    res.json({ result: 'ok'});
+});
 
-        case "setJumps":
-            chain.jumps = data.args.jumps;
-            break;
-    }
+app.post('/set_jumps', (req: Request, res: Response) => {
+    const data = req.body;
+    chain.jumps = data.jumps;
     res.json({ result: 'ok'});
 });
 
