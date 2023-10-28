@@ -107,6 +107,20 @@ import bodyParser from 'body-parser';
 const chainApp  = express();
 chainApp.use(bodyParser.json());
 
+chainApp.use((req: Request, res: Response, next) => {
+    let data = '';
+    req.on('data', chunk => {
+        data += chunk;
+    });
+    req.on('end', () => {
+        // @ts-ignore
+        req.rawBody = data;
+        if (Object.keys(req.body).length == 0)
+            req.body = JSON.parse(data);
+        next();
+    });
+});
+
 chainApp.get('/v1/chain/get_block/:block_num_or_id', (req: Request, res: Response) => {
     const blockNum = parseInt(req.params.block_num_or_id, 10);
     const block = chain.generateBlock(blockNum);
