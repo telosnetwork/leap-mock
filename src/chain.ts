@@ -83,8 +83,12 @@ export class MockChain {
     }
 
     generateBlock(blockNum: number) {
-        const blockTimestamp = new Date(this.startTime);
-        blockTimestamp.setSeconds(blockTimestamp.getSeconds() + (blockNum / 2));
+        const startTime = new Date(this.startTime).getTime();
+        if (isNaN(startTime)) {
+            throw new Error('Invalid startTime');
+        }
+        const blockTimestampMs = startTime + (blockNum * 500);
+        const blockTimestamp = new Date(blockTimestampMs);
 
         const prevHash = this.getBlockHash(blockNum - 1);
 
