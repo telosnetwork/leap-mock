@@ -111,6 +111,12 @@ app.post('/set_jumps', (req: Request, res: Response) => {
     res.json({ result: 'ok'});
 });
 
+app.post('/set_block_info', (req: Request, res: Response) => {
+    const data = req.body;
+    chain.blockInfo = data.blocks;
+    res.json({ result: 'ok'});
+});
+
 app.listen(controlPort, () => {
     console.log(`Control server running on http://localhost:${controlPort}`);
 });
