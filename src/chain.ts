@@ -206,8 +206,8 @@ export class MockChain {
         const headHash = this.getBlockHash(this.currentBlock);
 
         const [libNum, libHash] = this.getLibBlock();
-        let libTimestamp = '1970-01-01T00:00:00.000';
-        if (this.currentBlock > this.startBlock)
+        let libTimestamp = new Date(0).toISOString().slice(0, -1);
+        if (libNum > 0)
             libTimestamp = this.generateBlock(libNum).timestamp;
 
         return {
