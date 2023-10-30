@@ -3,6 +3,8 @@ import {ABI, Serializer} from "@greymass/eosio";
 import console from "console";
 
 const libOffset = 333;
+const ZERO_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
+
 export class MockChain {
     private startBlock: number;
     private endBlock: number;
@@ -16,6 +18,11 @@ export class MockChain {
 
     private clientAckBlock: number;
     private nextBlock: number;
+    private forkDB = {
+        block_id: ZERO_HASH,
+        block_num: 0
+    };
+
     private _produceTask: any;
 
     constructor(
@@ -71,9 +78,9 @@ export class MockChain {
         return this.blockInfo[this.jumpIndex][blockNum - this.startBlock + 1];
     }
 
-    getLibBlock(blockNum: number) {
-        let libNum = blockNum - libOffset;
-        let libHash = "0000000000000000000000000000000000000000000000000000000000000000";
+    getLibBlock() : [number, string] {
+        let libNum = this.nextBlock - libOffset;
+        let libHash = ZERO_HASH;
         if (this.startBlock <= libNum && this.endBlock >= libNum)
             libHash = this.getBlockHash(libNum);
         else
@@ -93,71 +100,74 @@ export class MockChain {
         const prevHash = this.getBlockHash(blockNum - 1);
 
         return {
-            "timestamp": blockTimestamp.toISOString().slice(0, -1),
-            "producer": "eosio",
-            "confirmed": 0,
-            "previous": prevHash,
-            "transaction_mroot": "0000000000000000000000000000000000000000000000000000000000000000",
-            "action_mroot": "0000000000000000000000000000000000000000000000000000000000000000",
-            "schedule_version": 0,
-            "new_producers": null,
-            "header_extensions": [],
-            "producer_signature": "SIG_K1_KZDYebJdphZ5Pdk6WtjtDuY3BN4gPwiVvbHozwjdu587HBjCskEwfhub24xx33eavDGnapFFQ357jSciQEPvG9FcGhgBKA",
-            "transactions": [],
-            "block_extensions": []
+            timestamp: blockTimestamp.toISOString().slice(0, -1),
+            producer: 'eosio',
+            confirmed: 0,
+            previous: prevHash,
+            transaction_mroot: ZERO_HASH,
+            action_mroot: ZERO_HASH,
+            schedule_version: 0,
+            new_producers: null,
+            header_extensions: [],
+            producer_signature: "SIG_K1_KZDYebJdphZ5Pdk6WtjtDuY3BN4gPwiVvbHozwjdu587HBjCskEwfhub24xx33eavDGnapFFQ357jSciQEPvG9FcGhgBKA",
+            transactions: [],
+            block_extensions: []
         };
     }
 
-    generateHeadBlockResponse(blockNum: number) {
-        const blockHash = this.getBlockHash(blockNum);
+    generateHeadBlockResponse() {
+        const blockHash = this.getBlockHash(this.nextBlock);
 
-        const prevBlockNum = blockNum - 1;
+        const prevBlockNum = this.nextBlock - 1;
         const prevHash = this.getBlockHash(prevBlockNum);
 
-        const [libNum, libHash] = this.getLibBlock(blockNum);
+        const [libNum, libHash] = this.getLibBlock();
 
         return {
-            "head": {
-                "block_num": blockNum,
-                "block_id": blockHash
+            head: {
+                block_num: this.nextBlock,
+                block_id: blockHash
             },
-            "last_irreversible": {
-                "block_num": libNum,
-                "block_id": libHash
+            last_irreversible: {
+                block_num: libNum,
+                block_id: libHash
             },
-            "this_block": {
-                "block_num": blockNum,
-                "block_id": blockHash
+            this_block: {
+                block_num: this.nextBlock,
+                block_id: blockHash
             },
-            "prev_block": {
-                "block_num": prevBlockNum,
-                "block_id": prevHash
+            prev_block: {
+                block_num: prevBlockNum,
+                block_id: prevHash
             },
-            "block": Serializer.encode({type: 'signed_block', abi: this.shipAbi, object: this.generateBlock(blockNum)}),
-            "traces": Serializer.encode({type: 'action_trace[]', abi: this.shipAbi, object: []}),
-            "deltas": Serializer.encode({type: 'table_delta[]', abi: this.shipAbi, object: []})
+            block: Serializer.encode(
+                {type: 'signed_block', abi: this.shipAbi, object: this.generateBlock(this.nextBlock)}),
+            traces: Serializer.encode(
+                {type: 'action_trace[]', abi: this.shipAbi, object: []}),
+            deltas: Serializer.encode(
+                {type: 'table_delta[]', abi: this.shipAbi, object: []})
         }
     }
 
     generateStatusResponse() {
         const blockNum = this.nextBlock - 1;
         const blockHash = this.getBlockHash(blockNum);
-        const [libNum, libHash] = this.getLibBlock(blockNum);
+        const [libNum, libHash] = this.getLibBlock();
 
         return {
-            "head": {
-                "block_num": blockNum,
-                "block_id": blockHash
+            head: {
+                block_num: blockNum,
+                block_id: blockHash
             },
-            "last_irreversible": {
-                "block_num": libNum,
-                "block_id": libHash
+            last_irreversible: {
+                block_num: libNum,
+                block_id: libHash
             },
-            "trace_begin_block": this.startBlock,
-            "trace_end_block": this.endBlock,
-            "chain_state_begin_block": this.startBlock,
-            "chain_state_end_block": this.endBlock,
-            "chain_id": this.chainId
+            trace_begin_block: this.startBlock,
+            trace_end_block: this.endBlock,
+            chain_state_begin_block: this.startBlock,
+            chain_state_end_block: this.endBlock,
+            chain_id: this.chainId
         }
     }
 
@@ -171,6 +181,9 @@ export class MockChain {
     setBlock(num: number) {
         this.nextBlock = num;
         this.clientAckBlock = num;
+        this.forkDB.block_id = this.getBlockHash(num);
+        this.forkDB.block_num = num;
+        this.jumpIndex++;
         console.log(`CONTROL: set next block to ${num}`);
     }
 
@@ -183,9 +196,40 @@ export class MockChain {
         if (this.jumpIndex < this.jumps.length &&
             this.nextBlock == this.jumps[this.jumpIndex][0]) {
             const currBlock = this.nextBlock;
+            this.forkDB.block_id = this.getBlockHash(currBlock);
+            this.forkDB.block_num = currBlock;
             this.setBlock(this.jumps[this.jumpIndex][1]);
             this.jumpIndex++;
         }
+    }
+
+    generateChainInfo() {
+        const headBlock = this.generateBlock(this.nextBlock);
+        const headHash = this.getBlockHash(this.nextBlock);
+        const [libNum, libHash] = this.getLibBlock();
+        const libBlock = this.generateBlock(libNum);
+        return {
+            server_version: 'cafebabe',
+            chain_id: this.chainId,
+            head_block_num: this.nextBlock,
+            last_irreversible_block_num: libNum,
+            last_irreversible_block_id: libHash,
+            head_block_id: headHash,
+            head_block_time: headBlock.timestamp,
+            head_block_producer: headBlock.producer,
+            virtual_block_cpu_limit: 200000000,
+            virtual_block_net_limit: 1048576000,
+            block_cpu_limit: 199900,
+            block_net_limit: 1048576,
+            server_version_string: 'v4.0.0',
+            fork_db_head_block_num: this.forkDB.block_num,
+            fork_db_head_block_id: this.forkDB.block_id,
+            server_full_version_string: 'v4.0.0-ship-mocker',
+            total_cpu_weight: '53817162457',
+            total_net_weight: '45368489859',
+            earliest_available_block_num: this.startBlock,
+            last_irreversible_block_time: libBlock.timestamp
+        };
     }
 
     produceBlock(ws) {
@@ -197,7 +241,7 @@ export class MockChain {
             const response = Serializer.encode({
                 type: "result",
                 abi: this.shipAbi,
-                object: ["get_blocks_result_v0", this.generateHeadBlockResponse(this.nextBlock)]
+                object: ["get_blocks_result_v0", this.generateHeadBlockResponse()]
             }).array;
             this.increaseBlock();
             ws.send(response);

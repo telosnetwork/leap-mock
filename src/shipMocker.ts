@@ -121,6 +121,8 @@ chainApp.use((req: Request, res: Response, next) => {
     });
 });
 
+
+// Get Block
 chainApp.get('/v1/chain/get_block/:block_num_or_id', (req: Request, res: Response) => {
     const blockNum = parseInt(req.params.block_num_or_id, 10);
     const block = chain.generateBlock(blockNum);
@@ -142,6 +144,16 @@ chainApp.post('/v1/chain/get_block', (req: Request, res: Response) => {
         block_num: blockNum,
         ref_block_prefix: 0
     });
+});
+
+
+// Get Info
+chainApp.get('/v1/chain/get_info', (req: Request, res: Response) => {
+    res.json(chain.generateChainInfo());
+});
+
+chainApp.post('/v1/chain/get_info', (req: Request, res: Response) => {
+    res.json(chain.generateChainInfo());
 });
 
 chainApp.listen(chainPort, () => {
