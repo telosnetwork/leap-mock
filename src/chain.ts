@@ -2,8 +2,10 @@ import {randomHash} from "./utils.js";
 import {ABI, Serializer} from "@greymass/eosio";
 import console from "console";
 
+
 const libOffset = 333;
 const ZERO_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
+
 
 export class MockChain {
     private startBlock: number;
@@ -17,7 +19,7 @@ export class MockChain {
     private jumpIndex;
 
     private clientAckBlock: number;
-    private nextBlock: number;
+    private currentBlock: number;
     private forkDB = {
         block_id: ZERO_HASH,
         block_num: 0
@@ -39,7 +41,7 @@ export class MockChain {
         this.shipAbi = shipAbi;
 
         this.clientAckBlock = this.startBlock - 1;
-        this.nextBlock = this.startBlock;
+        this.currentBlock = this.startBlock;
 
         this.jumps = [];
         this.jumpIndex = 0;
@@ -79,7 +81,7 @@ export class MockChain {
     }
 
     getLibBlock() : [number, string] {
-        let libNum = this.nextBlock - libOffset;
+        let libNum = this.currentBlock - libOffset;
         let libHash = ZERO_HASH;
         if (this.startBlock <= libNum && this.endBlock >= libNum)
             libHash = this.getBlockHash(libNum);
@@ -116,16 +118,16 @@ export class MockChain {
     }
 
     generateHeadBlockResponse() {
-        const blockHash = this.getBlockHash(this.nextBlock);
+        const blockHash = this.getBlockHash(this.currentBlock);
 
-        const prevBlockNum = this.nextBlock - 1;
+        const prevBlockNum = this.currentBlock - 1;
         const prevHash = this.getBlockHash(prevBlockNum);
 
         const [libNum, libHash] = this.getLibBlock();
 
         return {
             head: {
-                block_num: this.nextBlock,
+                block_num: this.currentBlock,
                 block_id: blockHash
             },
             last_irreversible: {
@@ -133,7 +135,7 @@ export class MockChain {
                 block_id: libHash
             },
             this_block: {
-                block_num: this.nextBlock,
+                block_num: this.currentBlock,
                 block_id: blockHash
             },
             prev_block: {
@@ -141,7 +143,7 @@ export class MockChain {
                 block_id: prevHash
             },
             block: Serializer.encode(
-                {type: 'signed_block', abi: this.shipAbi, object: this.generateBlock(this.nextBlock)}),
+                {type: 'signed_block', abi: this.shipAbi, object: this.generateBlock(this.currentBlock)}),
             traces: Serializer.encode(
                 {type: 'action_trace[]', abi: this.shipAbi, object: []}),
             deltas: Serializer.encode(
@@ -150,13 +152,12 @@ export class MockChain {
     }
 
     generateStatusResponse() {
-        const blockNum = this.nextBlock - 1;
-        const blockHash = this.getBlockHash(blockNum);
+        const blockHash = this.getBlockHash(this.currentBlock);
         const [libNum, libHash] = this.getLibBlock();
 
         return {
             head: {
-                block_num: blockNum,
+                block_num: this.currentBlock,
                 block_id: blockHash
             },
             last_irreversible: {
@@ -172,14 +173,14 @@ export class MockChain {
     }
 
     ackBlocks(amount: number) {
-        if (this.nextBlock + 1 > this.endBlock)
+        if (this.currentBlock + 1 > this.endBlock)
             return;
 
         this.clientAckBlock += amount;
     }
 
     setBlock(num: number) {
-        this.nextBlock = num;
+        this.currentBlock = num;
         this.clientAckBlock = num;
         this.forkDB.block_id = this.getBlockHash(num);
         this.forkDB.block_num = num;
@@ -188,30 +189,31 @@ export class MockChain {
     }
 
     increaseBlock() {
-        if (this.nextBlock + 1 > this.endBlock)
+        if (this.currentBlock + 1 > this.endBlock)
             return;
 
-        this.nextBlock++;
+        this.currentBlock++;
 
         if (this.jumpIndex < this.jumps.length &&
-            this.nextBlock == this.jumps[this.jumpIndex][0]) {
-            const currBlock = this.nextBlock;
-            this.forkDB.block_id = this.getBlockHash(currBlock);
-            this.forkDB.block_num = currBlock;
+            this.currentBlock == this.jumps[this.jumpIndex][0]) {
             this.setBlock(this.jumps[this.jumpIndex][1]);
             this.jumpIndex++;
         }
     }
 
     generateChainInfo() {
-        const headBlock = this.generateBlock(this.nextBlock);
-        const headHash = this.getBlockHash(this.nextBlock);
+        const headBlock = this.generateBlock(this.currentBlock);
+        const headHash = this.getBlockHash(this.currentBlock);
+
         const [libNum, libHash] = this.getLibBlock();
-        const libBlock = this.generateBlock(libNum);
+        let libTimestamp = '1970-01-01T00:00:00.000';
+        if (this.currentBlock > this.startBlock)
+            libTimestamp = this.generateBlock(libNum).timestamp;
+
         return {
             server_version: 'cafebabe',
             chain_id: this.chainId,
-            head_block_num: this.nextBlock,
+            head_block_num: this.currentBlock,
             last_irreversible_block_num: libNum,
             last_irreversible_block_id: libHash,
             head_block_id: headHash,
@@ -228,15 +230,15 @@ export class MockChain {
             total_cpu_weight: '53817162457',
             total_net_weight: '45368489859',
             earliest_available_block_num: this.startBlock,
-            last_irreversible_block_time: libBlock.timestamp
+            last_irreversible_block_time: libTimestamp
         };
     }
 
     produceBlock(ws) {
-        if (this.nextBlock > this.endBlock)
+        if (this.currentBlock + 1 > this.endBlock)
             return;
 
-        if (this.nextBlock <= this.clientAckBlock) {
+        if (this.currentBlock <= this.clientAckBlock) {
             console.log('sending one block...')
             const response = Serializer.encode({
                 type: "result",
