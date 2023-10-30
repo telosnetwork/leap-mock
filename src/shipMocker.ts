@@ -87,8 +87,6 @@ chainWss.on('connection', (ws) => {
 
             case "get_blocks_ack_request_v0":
                 chain.ackBlocks(requestData.num_messages);
-                console.log(`nextBlock: ${chain.nextBlock}`);
-                console.log(`clientAckBlock: ${chain.clientAckBlock}`);
                 break;
             default:
                 console.warn(`unhandled type: ${requestType}`);

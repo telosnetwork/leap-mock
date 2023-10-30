@@ -192,13 +192,12 @@ export class MockChain {
         if (this.currentBlock + 1 > this.endBlock)
             return;
 
-        this.currentBlock++;
-
         if (this.jumpIndex < this.jumps.length &&
-            this.currentBlock == this.jumps[this.jumpIndex][0]) {
+            this.currentBlock + 1 == this.jumps[this.jumpIndex][0]) {
             this.setBlock(this.jumps[this.jumpIndex][1]);
             this.jumpIndex++;
-        }
+        } else
+            this.currentBlock++;
     }
 
     generateChainInfo() {
