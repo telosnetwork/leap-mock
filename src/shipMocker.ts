@@ -55,7 +55,6 @@ program
             parseInt(endBlock, 10),
             shipAbi
         );
-        chain.startProducer();
     });
 
 program.parse(process.argv);
