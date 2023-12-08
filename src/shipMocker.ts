@@ -55,6 +55,7 @@ program
             parseInt(endBlock, 10),
             shipAbi
         );
+        chain.startProducer();
     });
 
 program.parse(process.argv);
@@ -65,15 +66,18 @@ const chainWss = new WebSocket.WebSocketServer({port: shipPort});
 
 console.log(`Opening mock ship websocket at ${shipPort}...`)
 chainWss.on('connection', (ws) => {
+    const sessionId = chain.initializeShipSession(ws);
+    ws.on('disconnect', async () => {
+        chain.stopSession(sessionId);
+    });
     ws.on('message', async (message) => {
         const request = Serializer.decode({type: "request", abi: shipAbi, data: message as Buffer});
         const requestType = request[0];
         const requestData = Serializer.objectify(request[1]);
-        console.log(requestType, requestData);
 
         switch (requestType) {
             case "get_blocks_request_v0":
-                chain.startProduction(ws);
+                chain.sessionGetBlocks(sessionId, requestData);
                 break;
 
             case "get_status_request_v0":
@@ -86,7 +90,7 @@ chainWss.on('connection', (ws) => {
                 break;
 
             case "get_blocks_ack_request_v0":
-                chain.ackBlocks(requestData.num_messages);
+                chain.sessionAckBlocks(sessionId, requestData.num_messages);
                 break;
             default:
                 console.warn(`unhandled type: ${requestType}`);
@@ -113,8 +117,11 @@ chainApp.use((req: Request, res: Response, next) => {
     req.on('end', () => {
         // @ts-ignore
         req.rawBody = data;
-        if (Object.keys(req.body).length == 0)
-            req.body = JSON.parse(data);
+        if (Object.keys(req.body).length == 0) {
+            req.body = {};
+            if (data.length != 0)
+                req.body = JSON.parse(data);
+        }
         next();
     });
 });
@@ -163,6 +170,16 @@ chainApp.listen(chainPort, () => {
 const controlApp = express();
 controlApp.use(bodyParser.json());
 
+controlApp.post('/start', (req: Request, res: Response) => {
+    chain.startProducer();
+    res.json({ result: 'ok'});
+})
+
+controlApp.post('/stop', (req: Request, res: Response) => {
+    chain.stopProducer();
+    res.json({ result: 'ok'});
+})
+
 controlApp.post('/set_block', (req: Request, res: Response) => {
     const data = req.body;
     chain.setBlock(data.num);
@@ -175,9 +192,15 @@ controlApp.post('/set_jumps', (req: Request, res: Response) => {
     res.json({ result: 'ok'});
 });
 
-controlApp.post('/set_block_info', (req: Request, res: Response) => {
+controlApp.post('/set_pauses', (req: Request, res: Response) => {
     const data = req.body;
-    chain.setBlockInfo(data.blocks, data.index);
+    chain.setPauses(data.jumps);
+    res.json({ result: 'ok'});
+});
+
+controlApp.post('/set_block_hist', (req: Request, res: Response) => {
+    const data = req.body;
+    chain.setBlockHistory(data.blocks, data.index);
     res.json({ result: 'ok'});
 });
 

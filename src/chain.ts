@@ -6,6 +6,18 @@ import console from "console";
 const libOffset = 333;
 const ZERO_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
 
+function sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+interface ShipSession {
+    ws: any,
+    syncTask: any,
+    ackBlocks: number,
+    startBlock: number,
+    currentBlock: number,
+    reachedHead: boolean
+};
 
 export class MockChain {
     private startBlock: number;
@@ -13,19 +25,25 @@ export class MockChain {
     private shipAbi: ABI;
     private chainId: string;
     private startTime: string;
-    private blockInfo: string[][];
+    private blockHistory: [number, string][][];
 
-    private jumps;
-    private jumpIndex;
+    private jumps: [number, number][];
+    private jumpIndex: number;
 
-    private clientAckBlock: number;
-    private currentBlock: number;
+    private pauses: [number, number][];
+    private pauseIndex: number;
+
+    private sessions: {[key: number]: ShipSession} = {};
+    private lastSessionId: number = 0;
+
+    private headBlockNum: number;
     private forkDB = {
         block_id: ZERO_HASH,
         block_num: 0
     };
 
-    private _produceTask: any;
+    private shouldProduce: boolean;
+    private producerTaskRunning: boolean;
 
     constructor(
         chainId: string,
@@ -40,19 +58,27 @@ export class MockChain {
         this.endBlock = endBlock;
         this.shipAbi = shipAbi;
 
-        this.clientAckBlock = this.startBlock - 1;
-        this.currentBlock = this.startBlock;
+        this.headBlockNum = startBlock;
 
         this.jumps = [];
         this.jumpIndex = 0;
 
-        this.blockInfo = [];
+        this.pauses = [];
+        this.pauseIndex = 0;
 
-        const randBlocks = [];
+        this.blockHistory = [];
+
+        const randBlocks: [number, string][] = [];
         for (let i = startBlock - 1; i <= endBlock; i++)
-            randBlocks.push(randomHash());
+            randBlocks.push([i, randomHash()]);
 
-        this.setBlockInfo(randBlocks, 0);
+        this.setBlockHistory(randBlocks, 0);
+    }
+
+    setPauses(pauses: [number, number][]) {
+        this.pauseIndex = 0;
+        this.pauses = pauses;
+        console.log(`CONTROL: set pauses array of size ${pauses.length}`);
     }
 
     setJumps(jumps: [number, number][], index: number) {
@@ -61,14 +87,14 @@ export class MockChain {
         console.log(`CONTROL: set jumps array of size ${jumps.length} index ${index}`);
     }
 
-    setBlockInfo(blocks: string[], index: number) {
-        if (index > this.blockInfo.length)
+    setBlockHistory(blocks: [number, string][], index: number) {
+        if (index > this.blockHistory.length)
             throw new Error("Tried to set index out of order");
 
-        if (index == this.blockInfo.length)
-            this.blockInfo.push(blocks);
+        if (index == this.blockHistory.length)
+            this.blockHistory.push(blocks);
         else
-            this.blockInfo[index] = blocks;
+            this.blockHistory[index] = blocks;
 
         console.log(`CONTROL: set blocks array of size ${blocks.length} index ${index}`);
     }
@@ -77,11 +103,11 @@ export class MockChain {
         if (blockNum < (this.startBlock - 1) || blockNum > this.endBlock)
             throw new Error("Invalid range");
 
-        return this.blockInfo[this.jumpIndex][blockNum - this.startBlock + 1];
+        return this.blockHistory[this.jumpIndex][blockNum - this.startBlock + 1][1];
     }
 
     getLibBlock() : [number, string] {
-        let libNum = this.currentBlock - libOffset;
+        let libNum = this.headBlockNum - libOffset;
         let libHash = ZERO_HASH;
         if (this.startBlock <= libNum && this.endBlock >= libNum)
             libHash = this.getBlockHash(libNum);
@@ -117,17 +143,17 @@ export class MockChain {
         };
     }
 
-    generateHeadBlockResponse() {
-        const blockHash = this.getBlockHash(this.currentBlock);
+    generateHeadBlockResponse(blockNum: number) {
+        const blockHash = this.getBlockHash(blockNum);
 
-        const prevBlockNum = this.currentBlock - 1;
+        const prevBlockNum = blockNum - 1;
         const prevHash = this.getBlockHash(prevBlockNum);
 
         const [libNum, libHash] = this.getLibBlock();
 
         return {
             head: {
-                block_num: this.currentBlock,
+                block_num: blockNum,
                 block_id: blockHash
             },
             last_irreversible: {
@@ -135,7 +161,7 @@ export class MockChain {
                 block_id: libHash
             },
             this_block: {
-                block_num: this.currentBlock,
+                block_num: blockNum,
                 block_id: blockHash
             },
             prev_block: {
@@ -143,7 +169,7 @@ export class MockChain {
                 block_id: prevHash
             },
             block: Serializer.encode(
-                {type: 'signed_block', abi: this.shipAbi, object: this.generateBlock(this.currentBlock)}),
+                {type: 'signed_block', abi: this.shipAbi, object: this.generateBlock(blockNum)}),
             traces: Serializer.encode(
                 {type: 'action_trace[]', abi: this.shipAbi, object: []}),
             deltas: Serializer.encode(
@@ -152,12 +178,12 @@ export class MockChain {
     }
 
     generateStatusResponse() {
-        const blockHash = this.getBlockHash(this.currentBlock);
+        const blockHash = this.getBlockHash(this.headBlockNum);
         const [libNum, libHash] = this.getLibBlock();
 
         return {
             head: {
-                block_num: this.currentBlock,
+                block_num: this.headBlockNum,
                 block_id: blockHash
             },
             last_irreversible: {
@@ -172,16 +198,28 @@ export class MockChain {
         }
     }
 
-    ackBlocks(amount: number) {
-        if (this.currentBlock + 1 > this.endBlock)
+    ackBlocks(sessionId: number, amount: number) {
+        if (!(sessionId in this.sessions)) {
+            console.log(`WARNING!: ackBlocks called with ${sessionId} which is not in sessions map`);
+            return;
+        }
+
+        const currentBlock = this.sessions[sessionId].currentBlock;
+        if (currentBlock > this.endBlock)
             return;
 
-        this.clientAckBlock += amount;
+        this.sessions[sessionId].ackBlocks += amount;
     }
 
     setBlock(num: number) {
-        this.currentBlock = num;
-        this.clientAckBlock = num;
+        this.headBlockNum = num;
+        for (const seshId in this.sessions) {
+            if (this.sessions[seshId].reachedHead) {
+                this.sessions[seshId].startBlock = num;
+                this.sessions[seshId].ackBlocks = 1;
+            }
+        }
+
         this.forkDB.block_id = this.getBlockHash(num);
         this.forkDB.block_num = num;
         this.jumpIndex++;
@@ -189,20 +227,20 @@ export class MockChain {
     }
 
     increaseBlock() {
-        if (this.currentBlock + 1 > this.endBlock)
+        if (this.headBlockNum > this.endBlock)
             return;
 
         if (this.jumpIndex < this.jumps.length &&
-            this.currentBlock + 1 == this.jumps[this.jumpIndex][0]) {
+            this.headBlockNum == this.jumps[this.jumpIndex][0]) {
             this.setBlock(this.jumps[this.jumpIndex][1]);
             this.jumpIndex++;
         } else
-            this.currentBlock++;
+            this.headBlockNum++;
     }
 
     generateChainInfo() {
-        const headBlock = this.generateBlock(this.currentBlock);
-        const headHash = this.getBlockHash(this.currentBlock);
+        const headBlock = this.generateBlock(this.headBlockNum);
+        const headHash = this.getBlockHash(this.headBlockNum);
 
         const [libNum, libHash] = this.getLibBlock();
         let libTimestamp = new Date(0).toISOString().slice(0, -1);
@@ -212,7 +250,7 @@ export class MockChain {
         return {
             server_version: 'cafebabe',
             chain_id: this.chainId,
-            head_block_num: this.currentBlock,
+            head_block_num: this.headBlockNum,
             last_irreversible_block_num: libNum,
             last_irreversible_block_id: libHash,
             head_block_id: headHash,
@@ -233,30 +271,148 @@ export class MockChain {
         };
     }
 
-    produceBlock(ws) {
-        if (this.currentBlock + 1 > this.endBlock)
-            return;
+    async produceBlock() {
+        if (this.pauseIndex < this.pauses.length) {
+            const [pauseBlock, pauseTime] = this.pauses[this.pauseIndex];
+            if (pauseBlock == this.headBlockNum) {
+                await sleep(pauseTime);
+                this.pauseIndex++;
+            }
+        }
 
-        if (this.currentBlock <= this.clientAckBlock) {
-            console.log('sending one block...')
-            const response = Serializer.encode({
-                type: "result",
-                abi: this.shipAbi,
-                object: ["get_blocks_result_v0", this.generateHeadBlockResponse()]
-            }).array;
-            this.increaseBlock();
-            ws.send(response);
+        console.log(`producing block ${this.headBlockNum}...`)
+
+        const headBlock = Serializer.encode({
+            type: "result",
+            abi: this.shipAbi,
+            object: ["get_blocks_result_v0", this.generateHeadBlockResponse(this.headBlockNum)]
+        }).array;
+        this.increaseBlock();
+
+        for (const id in this.sessions) {
+            const sesh = this.sessions[id];
+            if (this.headBlockNum <= sesh.startBlock + sesh.ackBlocks) {
+                sesh.ws.send(headBlock);
+                console.log(`sent to session ${id}`)
+            }
         }
     }
 
-    startProduction(ws) {
-        console.log('starting production...');
-        this._produceTask = setInterval(() => {
-            this.produceBlock(ws)
-        }, 500);
+    getNextBlockTime(): Date {
+        const now = new Date().getTime();
+        const roundedNow = Math.ceil(now / 500) * 500;
+        return new Date(roundedNow);
     }
 
-    stopProduction() {
-        clearInterval(this._produceTask);
+    async waitNextBlock() {
+        const now = new Date().getTime();
+        const nextBlockTime = this.getNextBlockTime();
+        await sleep(nextBlockTime.getTime() - now);
+    }
+
+    startProducer() {
+        if (this.producerTaskRunning) {
+            console.log(`WARNING!: tried to start second producer task, ignoring...`);
+            return;
+        }
+        this.shouldProduce = true;
+        setTimeout(async () => {
+            this.producerTaskRunning = true;
+            await this.waitNextBlock();
+            while (this.shouldProduce) {
+                await this.produceBlock();
+                await this.waitNextBlock();
+            }
+            this.producerTaskRunning = false;
+        }, 0);
+    }
+
+    stopProducer() {
+        this.shouldProduce = false;
+    }
+
+    stopSession(sessionId: number) {
+        if (this.sessions[sessionId].syncTask != null)
+            clearInterval(this.sessions[sessionId].syncTask);
+
+        delete this.sessions[sessionId];
+        console.log(`stopped session ${sessionId}`)
+    }
+
+    initializeShipSession(ws) {
+        const seshId: number = this.lastSessionId++;
+
+        this.sessions[seshId] = {
+            ws,
+            syncTask: null,
+            ackBlocks: 0,
+            startBlock: -1,
+            currentBlock: -1,
+            reachedHead: false
+        };
+
+        return seshId;
+    }
+
+    sessionGetBlocks(
+        sessionId: number,
+        requestData: {
+            start_block_num: number,
+            end_block_num: number
+        }
+    ) {
+        if (requestData.start_block_num < this.startBlock) {
+            // requestData.end_block_num > this.endBlock) {
+            console.log('WARNING!: trying to initialize ship session outside the range...');
+            return;
+        }
+
+        if (!(sessionId in this.sessions)) {
+            console.log(`WARNING!: get blocks with unknown session ${sessionId}`);
+            return;
+        }
+
+        this.sessions[sessionId].startBlock = requestData.start_block_num;
+        this.sessions[sessionId].currentBlock = requestData.start_block_num;
+
+        if (requestData.start_block_num == this.headBlockNum) {
+            this.sessions[sessionId].reachedHead = true;
+        } else {
+            this.sessions[sessionId].syncTask = setTimeout(async () => {
+                console.log(`start sync task for session ${sessionId}`);
+                while (this.sessions[sessionId].currentBlock < this.headBlockNum) {
+                    let ackedBlock = this.sessions[sessionId].startBlock + this.sessions[sessionId].ackBlocks;
+                    while (this.sessions[sessionId].currentBlock <= ackedBlock) {
+                        const nextBlock = Serializer.encode({
+                            type: "result",
+                            abi: this.shipAbi,
+                            object: [
+                                "get_blocks_result_v0",
+                                this.generateHeadBlockResponse(this.sessions[sessionId].currentBlock)
+                            ]
+                        }).array;
+                        this.sessions[sessionId].ws.send(nextBlock);
+                        if (this.sessions[sessionId].currentBlock % 100 == 0)
+                            console.log(`session ${sessionId}: sent block ${this.sessions[sessionId].currentBlock}`)
+                        this.sessions[sessionId].currentBlock++;
+                    }
+                    await sleep(20);
+                }
+                this.sessions[sessionId].reachedHead = true;
+                console.log(`sync task for session ${sessionId} ended.`);
+            }, 0);
+        }
+    }
+
+    sessionAckBlocks(sessionId: number, amount: number) {
+        if (!(sessionId in this.sessions)) {
+            console.log(`WARNING!: sessionAckBlocks with unknown sessionId ${sessionId}`);
+            return;
+        }
+
+        if (this.sessions[sessionId].currentBlock + 1 > this.endBlock)
+            return;
+
+        this.sessions[sessionId].ackBlocks += amount;
     }
 }
