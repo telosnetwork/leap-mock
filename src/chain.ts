@@ -1,4 +1,4 @@
-import {randomHash} from "./utils.js";
+import {getNextBlockTime, randomHash, sleep} from "./utils.js";
 import {ABI, Serializer} from "@greymass/eosio";
 import console from "console";
 
@@ -6,13 +6,10 @@ import console from "console";
 const libOffset = 333;
 const ZERO_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
 
-function sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 interface ShipSession {
     ws: any,
-    syncTask: any,
+    shouldSync: boolean;
+    syncTaskRunning: boolean;
     ackBlocks: number,
     startBlock: number,
     currentBlock: number,
@@ -20,12 +17,14 @@ interface ShipSession {
 };
 
 export class MockChain {
+    shipAbi: ABI;
+
+    private asapMode: boolean;
     private startBlock: number;
     private endBlock: number;
-    private shipAbi: ABI;
     private chainId: string;
     private startTime: string;
-    private blockHistory: [number, string][][];
+    private blockHistory: string[][];
 
     private jumps: [number, number][];
     private jumpIndex: number;
@@ -45,18 +44,23 @@ export class MockChain {
     private shouldProduce: boolean;
     private producerTaskRunning: boolean;
 
+    private pauseHandler: (time: number) => Promise<void>;
+
     constructor(
         chainId: string,
         startTime: string,
         startBlock: number,
         endBlock: number,
-        shipAbi: ABI
+        shipAbi: ABI,
+        pauseHandler: (time: number) => Promise<void>,
+        asapMode: boolean = false
     ) {
         this.chainId = chainId;
         this.startTime = startTime;
         this.startBlock = startBlock;
         this.endBlock = endBlock;
         this.shipAbi = shipAbi;
+        this.pauseHandler = pauseHandler;
 
         this.headBlockNum = startBlock;
 
@@ -68,11 +72,7 @@ export class MockChain {
 
         this.blockHistory = [];
 
-        const randBlocks: [number, string][] = [];
-        for (let i = startBlock - 1; i <= endBlock; i++)
-            randBlocks.push([i, randomHash()]);
-
-        this.setBlockHistory(randBlocks, 0);
+        this.asapMode = asapMode;
     }
 
     setPauses(pauses: [number, number][]) {
@@ -87,7 +87,7 @@ export class MockChain {
         console.log(`CONTROL: set jumps array of size ${jumps.length} index ${index}`);
     }
 
-    setBlockHistory(blocks: [number, string][], index: number) {
+    setBlockHistory(blocks: string[], index: number) {
         if (index > this.blockHistory.length)
             throw new Error("Tried to set index out of order");
 
@@ -99,11 +99,11 @@ export class MockChain {
         console.log(`CONTROL: set blocks array of size ${blocks.length} index ${index}`);
     }
 
-    getBlockHash(blockNum: number) {
+    getBlockHash(blockNum: number): string {
         if (blockNum < (this.startBlock - 1) || blockNum > this.endBlock)
             throw new Error("Invalid range");
 
-        return this.blockHistory[this.jumpIndex][blockNum - this.startBlock + 1][1];
+        return this.blockHistory[this.jumpIndex][blockNum - this.startBlock + 1];
     }
 
     getLibBlock() : [number, string] {
@@ -199,19 +199,16 @@ export class MockChain {
     }
 
     ackBlocks(sessionId: number, amount: number) {
-        if (!(sessionId in this.sessions)) {
-            console.log(`WARNING!: ackBlocks called with ${sessionId} which is not in sessions map`);
-            return;
-        }
+        const sesh = this.getSession(sessionId);
 
-        const currentBlock = this.sessions[sessionId].currentBlock;
+        const currentBlock = sesh.currentBlock;
         if (currentBlock > this.endBlock)
             return;
 
-        this.sessions[sessionId].ackBlocks += amount;
+        sesh.ackBlocks += amount;
     }
 
-    setBlock(num: number) {
+    private setBlock(num: number) {
         this.headBlockNum = num;
         for (const seshId in this.sessions) {
             if (this.sessions[seshId].reachedHead) {
@@ -233,7 +230,6 @@ export class MockChain {
         if (this.jumpIndex < this.jumps.length &&
             this.headBlockNum == this.jumps[this.jumpIndex][0]) {
             this.setBlock(this.jumps[this.jumpIndex][1]);
-            this.jumpIndex++;
         } else
             this.headBlockNum++;
     }
@@ -275,38 +271,28 @@ export class MockChain {
         if (this.pauseIndex < this.pauses.length) {
             const [pauseBlock, pauseTime] = this.pauses[this.pauseIndex];
             if (pauseBlock == this.headBlockNum) {
-                await sleep(pauseTime);
+                this.pauseHandler(pauseTime).then();
                 this.pauseIndex++;
             }
         }
 
-        console.log(`producing block ${this.headBlockNum}...`)
+        // console.log(`producing block ${this.headBlockNum}...`)
 
         const headBlock = Serializer.encode({
             type: "result",
             abi: this.shipAbi,
             object: ["get_blocks_result_v0", this.generateHeadBlockResponse(this.headBlockNum)]
         }).array;
-        this.increaseBlock();
-
         for (const id in this.sessions) {
             const sesh = this.sessions[id];
-            if (this.headBlockNum <= sesh.startBlock + sesh.ackBlocks) {
+            if (this.headBlockNum <= sesh.startBlock + sesh.ackBlocks)
                 sesh.ws.send(headBlock);
-                console.log(`sent to session ${id}`)
-            }
         }
-    }
-
-    getNextBlockTime(): Date {
-        const now = new Date().getTime();
-        const roundedNow = Math.ceil(now / 500) * 500;
-        return new Date(roundedNow);
     }
 
     async waitNextBlock() {
         const now = new Date().getTime();
-        const nextBlockTime = this.getNextBlockTime();
+        const nextBlockTime = getNextBlockTime();
         await sleep(nextBlockTime.getTime() - now);
     }
 
@@ -319,24 +305,24 @@ export class MockChain {
         setTimeout(async () => {
             this.producerTaskRunning = true;
             await this.waitNextBlock();
-            while (this.shouldProduce) {
+
+            while (this.shouldProduce &&
+                   this.headBlockNum <= this.endBlock) {
                 await this.produceBlock();
-                await this.waitNextBlock();
+
+                if (!this.asapMode)
+                    await this.waitNextBlock();
+
+                this.increaseBlock();
             }
             this.producerTaskRunning = false;
         }, 0);
     }
 
-    stopProducer() {
+    async stopProducer() {
         this.shouldProduce = false;
-    }
-
-    stopSession(sessionId: number) {
-        if (this.sessions[sessionId].syncTask != null)
-            clearInterval(this.sessions[sessionId].syncTask);
-
-        delete this.sessions[sessionId];
-        console.log(`stopped session ${sessionId}`)
+        while (this.producerTaskRunning)
+            await sleep(100);
     }
 
     initializeShipSession(ws) {
@@ -344,16 +330,50 @@ export class MockChain {
 
         this.sessions[seshId] = {
             ws,
-            syncTask: null,
+            syncTaskRunning: false,
+            shouldSync: false,
             ackBlocks: 0,
             startBlock: -1,
             currentBlock: -1,
             reachedHead: false
         };
 
+        // console.log(`session ${seshId} created.`)
         return seshId;
     }
 
+    getSession(sessionId: number) {
+        if (!(sessionId in this.sessions))
+            throw new Error(`session ${sessionId} not found`);
+
+        return this.sessions[sessionId];
+    }
+
+    async stopSession(sessionId: number) {
+        const sesh = this.getSession(sessionId)
+
+        // stop sync task if present
+        if (sesh.shouldSync) {
+            sesh.shouldSync = false;
+
+            while(sesh.syncTaskRunning)
+                await sleep(20);
+        }
+
+        delete this.sessions[sessionId];
+        // console.log(`stopped session ${sessionId}`)
+    }
+    /**
+     * This function sets up the session parameters for block synchronization, starting from `start_block_num` 
+     * and targeting `end_block_num`. It performs a check to ensure the requested block range is within the 
+     * permissible range. If the range is valid, it updates the session's block range and starts a synchronization 
+     * task if necessary.
+     * 
+     * @param {number} sessionId - The unique identifier of the session.
+     * @param {Object} requestData - An object containing the block range for synchronization.
+     * @param {number} requestData.start_block_num - The starting block number for synchronization.
+     * @param {number} requestData.end_block_num - The ending block number for synchronization.
+     */
     sessionGetBlocks(
         sessionId: number,
         requestData: {
@@ -361,58 +381,69 @@ export class MockChain {
             end_block_num: number
         }
     ) {
-        if (requestData.start_block_num < this.startBlock) {
-            // requestData.end_block_num > this.endBlock) {
-            console.log('WARNING!: trying to initialize ship session outside the range...');
-            return;
-        }
+        if (requestData.start_block_num < this.startBlock)
+            throw new Error('trying to initialize ship session outside the range');
 
-        if (!(sessionId in this.sessions)) {
-            console.log(`WARNING!: get blocks with unknown session ${sessionId}`);
-            return;
-        }
+        const sesh = this.getSession(sessionId);
 
-        this.sessions[sessionId].startBlock = requestData.start_block_num;
-        this.sessions[sessionId].currentBlock = requestData.start_block_num;
+        sesh.startBlock = requestData.start_block_num;
+        sesh.currentBlock = requestData.start_block_num;
 
         if (requestData.start_block_num == this.headBlockNum) {
-            this.sessions[sessionId].reachedHead = true;
+            sesh.reachedHead = true;
         } else {
-            this.sessions[sessionId].syncTask = setTimeout(async () => {
-                console.log(`start sync task for session ${sessionId}`);
-                while (this.sessions[sessionId].currentBlock < this.headBlockNum) {
-                    let ackedBlock = this.sessions[sessionId].startBlock + this.sessions[sessionId].ackBlocks;
-                    while (this.sessions[sessionId].currentBlock <= ackedBlock) {
+            sesh.shouldSync = true;
+            sesh.syncTaskRunning = true;
+
+            setTimeout(async () => {
+                // console.log(`start sync task for session ${sessionId}`);
+
+                while (sesh.shouldSync &&
+                       sesh.currentBlock < this.headBlockNum) {
+
+                    let ackedBlock = sesh.startBlock + sesh.ackBlocks;
+                    while (sesh.currentBlock <= ackedBlock) {
                         const nextBlock = Serializer.encode({
                             type: "result",
                             abi: this.shipAbi,
                             object: [
                                 "get_blocks_result_v0",
-                                this.generateHeadBlockResponse(this.sessions[sessionId].currentBlock)
+                                this.generateHeadBlockResponse(sesh.currentBlock)
                             ]
                         }).array;
-                        this.sessions[sessionId].ws.send(nextBlock);
-                        if (this.sessions[sessionId].currentBlock % 100 == 0)
-                            console.log(`session ${sessionId}: sent block ${this.sessions[sessionId].currentBlock}`)
-                        this.sessions[sessionId].currentBlock++;
+                        sesh.ws.send(nextBlock);
+                        // if (sesh.currentBlock % 100 == 0)
+                            // console.log(`session ${sessionId}: sent block ${sesh.currentBlock}`)
+                        sesh.currentBlock++;
                     }
                     await sleep(20);
                 }
-                this.sessions[sessionId].reachedHead = true;
-                console.log(`sync task for session ${sessionId} ended.`);
+                sesh.reachedHead = true;
+                sesh.shouldSync = false;
+                sesh.syncTaskRunning = false;
+                // console.log(`sync task for session ${sessionId} ended.`);
             }, 0);
         }
     }
 
     sessionAckBlocks(sessionId: number, amount: number) {
-        if (!(sessionId in this.sessions)) {
-            console.log(`WARNING!: sessionAckBlocks with unknown sessionId ${sessionId}`);
+        const sesh = this.getSession(sessionId);
+
+        if (sesh.currentBlock + 1 > this.endBlock)
             return;
+
+        sesh.ackBlocks += amount;
+    }
+
+    async fullStop() {
+        const tasks = [];
+        for (const sessionId in this.sessions) {
+            // @ts-ignore
+            tasks.push(this.stopSession(sessionId));
         }
 
-        if (this.sessions[sessionId].currentBlock + 1 > this.endBlock)
-            return;
+        await Promise.all(tasks);
 
-        this.sessions[sessionId].ackBlocks += amount;
+        await this.stopProducer();
     }
 }
