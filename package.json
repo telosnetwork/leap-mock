@@ -13,13 +13,12 @@
   "scripts": {
     "build": "tsc && node scripts/create-dist-packages.mjs",
     "start": "node build/src/main.js",
-    "test-fork": "mocha build/tests/fork.spec.js --timeout 1200000",
-    "test-reconnect": "mocha build/tests/reconnect.spec.js --timeout 1200000"
+    "test-fork": "mocha build/tests/fork.spec.js --timeout 120000",
+    "test-reconnect": "mocha build/tests/reconnect.spec.js --timeout 120000"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@eosrio/hyperion-sequential-reader": "https://github.com/eosrio/hyperion-sequential-reader.git#hist_buf_size",
     "@greymass/eosio": "0.6.11",
     "@types/express": "^4.17.20",
     "@types/ws": "^8.5.8",
@@ -31,6 +30,7 @@
     "ws": "^8.14.2"
   },
   "devDependencies": {
+    "@eosrio/hyperion-sequential-reader": "https://github.com/eosrio/hyperion-sequential-reader.git#hist_buf_size",
     "@types/async": "^3.2.16",
     "@types/chai": "^4.3.11",
     "@types/mocha": "^10.0.6",

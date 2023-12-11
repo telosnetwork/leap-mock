@@ -3,6 +3,7 @@ import express, {Express} from "express";
 import controllerRouter from "./controllerRoutes.js";
 import console from "console";
 import * as http from "http";
+import process from "process";
 
 process.on('unhandledRejection', error => {
     console.error('Unhandled Rejection');
@@ -42,6 +43,10 @@ export class ControllerContext {
             this.connections.push(connection);
             connection.on('close', () => this.connections = this.connections.filter(curr => curr !== connection));
         });
+
+        process.on('SIGINT', this.controller.exitHandler);
+        process.on('SIGQUIT', this.controller.exitHandler);
+        process.on('SIGTERM', this.controller.exitHandler);
 
         return chainsInfo;
     }
