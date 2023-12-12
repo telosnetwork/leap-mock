@@ -1,7 +1,8 @@
-import {ChainDescriptor, NewChainInfo} from "../src/controller.js";
+import {ChainDescriptor, NewChainInfo} from "../controller.js";
 import {HyperionSequentialReader} from "@eosrio/hyperion-sequential-reader";
-import {sleep, randomHash} from "../src/utils.js";
+import {sleep, randomHash} from "../utils.js";
 import {assert} from "chai";
+import logging from "../logging.js";
 
 export function generateTestChainDescriptor(
     chainId?: string,
@@ -39,13 +40,13 @@ export async function expectSequence(
         blockConcurrency: 1,
         outputQueueLimit: 10,
         startBlock: 1,
-        logLevel: 'debug'
+        logLevel: logging.level
     });
     reader.onDisconnect = async () => {
         if (!isExpectedSequence || reachedEnd)
             return;
 
-        reader.log('warning', `reader disconnected, restarting in 3 seconds...`);
+        logging.info(`reader disconnected, restarting in 3 seconds...`);
         await sleep(3 * 1000);
         reader.restart();
     };

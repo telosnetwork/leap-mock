@@ -1,7 +1,7 @@
 import {spawn} from "child_process";
 
 // Spawn the process
-const process = spawn('docker', ['kill', '--signal=SIGINT', 'leap-mock']);
+const process = spawn('docker', ['kill', 'leap-mock']);
 
 // Handle standard output
 process.stdout.on('data', (data) => {

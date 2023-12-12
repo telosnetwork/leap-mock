@@ -23,6 +23,15 @@
     enabled "2.0.x"
     kuler "^2.0.0"
 
+"@eosrio/hyperion-sequential-reader@https://github.com/eosrio/hyperion-sequential-reader.git#hist_buf_size":
+  version "1.2.5"
+  resolved "https://github.com/eosrio/hyperion-sequential-reader.git#87839c6cfa5b2a5df017c36bb65e7edd17ae80ba"
+  dependencies:
+    "@greymass/eosio" "0.6.11"
+    async "^3.2.4"
+    node-fetch "^3.3.0"
+    ws "^8.13.0"
+
 "@esbuild/android-arm64@0.18.20":
   version "0.18.20"
   resolved "https://registry.yarnpkg.com/@esbuild/android-arm64/-/android-arm64-0.18.20.tgz#984b4f9c8d0377443cc2dfcef266d02244593622"

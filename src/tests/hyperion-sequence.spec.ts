@@ -1,6 +1,6 @@
-import {ControllerContext} from "../src/controllerUtils.js";
-import {ControllerConfig} from "../src/controller.js";
-import {getRandomPort} from "../src/utils.js";
+import {ControllerContext} from "../controllerUtils.js";
+import {ControllerConfig} from "../controller.js";
+import {getRandomPort} from "../utils.js";
 import {expectSequence} from "./utils.js";
 
 
@@ -38,7 +38,7 @@ describe('Hyperion In Order Sequence', async function () {
     context.registerTestChain(testForkDoubleName, {
         jumps: [[5, 3], [6, 6]]});
     it(testForkDoubleName, async function () {
-        const chainInfo = context.getTestChain(testForkName);
+        const chainInfo = context.getTestChain(testForkDoubleName);
         return await expectSequence(
             chainInfo,
             [
@@ -59,7 +59,7 @@ describe('Hyperion In Order Sequence', async function () {
     context.registerTestChain(testReconMultiName, {
         pauses: [[3, 2], [10, 2]]});
     it(testReconMultiName, async function () {
-        const chainInfo = context.getTestChain(testReconName);
+        const chainInfo = context.getTestChain(testReconMultiName);
         return await expectSequence(chainInfo, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
     });
 });

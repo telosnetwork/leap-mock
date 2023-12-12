@@ -4,7 +4,7 @@ import controllerRouter from "./controllerRoutes.js";
 import * as http from "http";
 import process from "process";
 import ControllerHTTPClient from "./controllerHTTPClient.js";
-import {generateTestChainDescriptor} from "../tests/utils.js";
+import {generateTestChainDescriptor} from "./tests/utils.js";
 import logger from "./logging.js";
 
 process.on('unhandledRejection', error => {
