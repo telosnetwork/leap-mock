@@ -8,11 +8,11 @@ import {generateTestChainDescriptor} from "./tests/utils.js";
 import logger from "./logging.js";
 
 process.on('unhandledRejection', error => {
-    logger.crit('Unhandled Rejection');
+    logger.error('Unhandled Rejection');
     // @ts-ignore
-    logger.crit(error.message);
+    logger.error(error.message);
     // @ts-ignore
-    logger.crit(error.stack);
+    logger.error(error.stack);
     throw error;
 });
 
