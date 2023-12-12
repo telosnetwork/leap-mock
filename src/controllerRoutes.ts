@@ -1,10 +1,10 @@
-import express, { Request, Response } from 'express';
+import express, {Request, Response, Router} from 'express';
 import bodyParser from 'body-parser';
 import {ChainDescriptor, Controller} from './controller.js';
 import {sleep} from './utils.js';
 
 // Control endpoint
-const controllerRouter = (controller: Controller) => {
+const controllerRouter = (controller: Controller): Router => {
     const controlApp = express.Router();
     controlApp.use(bodyParser.json());
 
