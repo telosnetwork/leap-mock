@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
-import {ChainDescriptor, NewChainInfo} from "./controller";
+import {ChainDescriptor, NewChainInfo} from "./controller.js";
 
 export interface ControllerResponse {
     result?: any;

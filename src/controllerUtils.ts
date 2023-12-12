@@ -40,6 +40,8 @@ export class ControllerContext {
     registerTestChain(
         testName: string,
         opts: {
+            shipPort?: number,
+            httpPort?: number,
             blocks?: string[][],
             jumps?: [number, number][],
             pauses?: [number, number][],
