@@ -24,4 +24,4 @@ jobs:
       - name: Push Container
         run: |
           echo ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }} | docker login -u ${{ secrets.DOCKER_HUB_USERNAME }} --password-stdin
-          npm run push-docker
+          npm run docker-push

@@ -19,8 +19,9 @@
     "test": "mocha build/tests/**/*.spec.js --timeout 120000",
 
     "docker-build": "npm run build && node scripts/docker-build.mjs",
-    "start-docker": "node scripts/docker-run.mjs",
-    "push-docker": "node scripts/docker-push.mjs"
+    "docker-start": "node scripts/docker-run.mjs",
+    "docker-stop": "node scripts/docker-stop.mjs",
+    "docker-push": "node scripts/docker-push.mjs"
   },
   "author": "",
   "license": "ISC",
