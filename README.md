@@ -1,8 +1,57 @@
 # leap-mock
 Allows creation of mock Antelope chains for testing of weird block production scenarios, based on two main concepts:
 
-- Jumps: used to setup fork scenarios
-- Pauses: used to setup connection drop scenarios
+- Jumps: used to set up fork scenarios
+- Pauses: used to set up connection drop scenarios
+
+# Table of Contents
+
+1. [Introduction](#leap-mock)
+   - [Overview of `leap-mock`](#leap-mock)
+   - [Key Concepts: Jumps and Pauses](#leap-mock)
+
+2. [Quickstart](#quickstart)
+   - [Running with Docker](#quickstart)
+   - [Running with a Cloned Repository](#quickstart)
+   - [Control API Port Information](#quickstart)
+
+3. [Practical Example](#practical-example)
+   - [Example Use Case: Testing Fork Handling](#practical-example)
+   - [Crafting a ChainDescriptor](#practical-example)
+   - [ChainDescriptor Parameters and Behavior](#practical-example)
+
+4. [Endpoints](#endpoints)
+   - [POST /create_chain](#post-create_chain)
+     - [Description and Usage](#post-create_chain)
+     - [Request Body and Response Structure](#post-create_chain)
+
+5. [Parameters](#parameters)
+   - [Optional Parameters](#optional-parameters)
+     - [Details of Optional Parameters](#optional-parameters)
+   - [Mandatory Parameters](#mandatory-parameters)
+     - [Description of Mandatory Parameters](#mandatory-parameters)
+
+6. [Behavior](#behavior)
+   - [Behavior and Functionality of `initializeChain`](#behavior)
+
+7. [Additional Endpoints](#endpoints-1)
+   - [POST /restart_chain_network](#post-restart_chain_network)
+     - [Description, Request Body, and Responses](#post-restart_chain_network)
+   - [POST /destroy_chain](#post-destroy_chain)
+     - [Description, Request Body, and Responses](#post-destroy_chain)
+   - [POST /start](#post-start)
+     - [Description, Request Body, and Responses](#post-start)
+   - [POST /stop](#post-stop)
+     - [Description, Request Body, and Responses](#post-stop)
+
+8. [Implemented Mock APIs](#implemented-mock-apis)
+   - [HTTP API Endpoints](#implemented-mock-apis)
+   - [WebSocket Protocols](#implemented-mock-apis)
+
+9. [Testing](#testing)
+   - [Integration into Mocha-based Tests](#testing)
+   - [Location of Test Scripts](#testing)
+
 
 # Quickstart
 
@@ -10,7 +59,7 @@ Allows creation of mock Antelope chains for testing of weird block production sc
 
 or with the repo cloned:
 
-    npm run start-docker
+    npm run build && npm run start
 
 This will serve the control api at port 6970
 
@@ -29,7 +78,7 @@ first lets craft a [ChainDescriptor](src/controller.ts#L17) :
 ```
 
 If used as parameters for the `/create_chain` endpoint this `ChainDescriptor` will create a new chain with block
-range 1-10, with hashes of blocks beign just a hex of the block number, then if started, when this chain reaches block 5 it will jump back to block 3, simulating a fork.
+range 1-10, with hashes of blocks being just a hex of the block number, then if started, when this chain reaches block 5 it will jump back to block 3, simulating a fork.
 
 Remember to start block production the endpoint `/start` has to be called with the `chainId`.
 
