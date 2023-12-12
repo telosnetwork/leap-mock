@@ -1,87 +1,120 @@
-import {randomHash} from "./utils.js";
+import {getNextBlockTime, randomHash, sleep} from "./utils.js";
 import {ABI, Serializer} from "@greymass/eosio";
-import console from "console";
+import logger from "./logging.js";
 
 
 const libOffset = 333;
 const ZERO_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
 
+interface ShipSession {
+    ws: any,
+    shouldSync: boolean;
+    syncTaskRunning: boolean;
+    ackBlocks: number,
+    startBlock: number,
+    currentBlock: number,
+    reachedHead: boolean
+};
 
 export class MockChain {
+    shipAbi: ABI;
+
+    private asapMode: boolean;
     private startBlock: number;
     private endBlock: number;
-    private shipAbi: ABI;
     private chainId: string;
     private startTime: string;
-    private blockInfo: string[][];
+    private blockHistory: string[][];
 
-    private jumps;
-    private jumpIndex;
+    private jumps: [number, number][];
+    private jumpIndex: number;
 
-    private clientAckBlock: number;
-    private currentBlock: number;
+    private pauses: [number, number][];
+    private pauseIndex: number;
+
+    private sessions: {[key: number]: ShipSession} = {};
+    private lastSessionId: number = 0;
+
+    private headBlockNum: number;
     private forkDB = {
         block_id: ZERO_HASH,
         block_num: 0
     };
 
-    private _produceTask: any;
+    private jumpedLastBlock: boolean = false;
+    private shouldProduce: boolean;
+    private producerTaskRunning: boolean;
+
+    private pauseHandler: (time: number) => Promise<void>;
 
     constructor(
         chainId: string,
         startTime: string,
         startBlock: number,
         endBlock: number,
-        shipAbi: ABI
+        shipAbi: ABI,
+        pauseHandler: (time: number) => Promise<void>,
+        asapMode: boolean = false
     ) {
         this.chainId = chainId;
         this.startTime = startTime;
         this.startBlock = startBlock;
         this.endBlock = endBlock;
         this.shipAbi = shipAbi;
+        this.pauseHandler = pauseHandler;
 
-        this.clientAckBlock = this.startBlock - 1;
-        this.currentBlock = this.startBlock;
+        this.headBlockNum = startBlock;
 
         this.jumps = [];
         this.jumpIndex = 0;
 
-        this.blockInfo = [];
+        this.pauses = [];
+        this.pauseIndex = 0;
 
-        const randBlocks = [];
-        for (let i = startBlock - 1; i <= endBlock; i++)
-            randBlocks.push(randomHash());
+        this.blockHistory = [];
 
-        this.setBlockInfo(randBlocks, 0);
+        this.asapMode = asapMode;
+    }
+
+    log(level: string, message: string) {
+        logger[level](`chain: ${message}`);
+    }
+
+    setPauses(pauses: [number, number][]) {
+        this.pauseIndex = 0;
+        this.pauses = pauses;
+        this.log('info', `set pauses array of size ${pauses.length}`);
     }
 
     setJumps(jumps: [number, number][], index: number) {
         this.jumpIndex = 0;
         this.jumps = jumps;
-        console.log(`CONTROL: set jumps array of size ${jumps.length} index ${index}`);
+        this.log('info', `set jumps array of size ${jumps.length} index ${index}`)
     }
 
-    setBlockInfo(blocks: string[], index: number) {
-        if (index > this.blockInfo.length)
+    setBlockHistory(blocks: string[], index: number) {
+        if (index > this.blockHistory.length)
             throw new Error("Tried to set index out of order");
 
-        if (index == this.blockInfo.length)
-            this.blockInfo.push(blocks);
+        if (index == this.blockHistory.length)
+            this.blockHistory.push(blocks);
         else
-            this.blockInfo[index] = blocks;
+            this.blockHistory[index] = blocks;
 
-        console.log(`CONTROL: set blocks array of size ${blocks.length} index ${index}`);
+        this.log('info', `set blocks array of size ${blocks.length} index ${index}`)
     }
 
-    getBlockHash(blockNum: number) {
+    getBlockHash(blockNum: number, prev: boolean = false): string {
         if (blockNum < (this.startBlock - 1) || blockNum > this.endBlock)
             throw new Error("Invalid range");
 
-        return this.blockInfo[this.jumpIndex][blockNum - this.startBlock + 1];
+        return this.blockHistory[
+            !prev ? this.jumpIndex : this.jumpIndex - 1
+        ][blockNum - this.startBlock + 1];
     }
 
     getLibBlock() : [number, string] {
-        let libNum = this.currentBlock - libOffset;
+        let libNum = this.headBlockNum - libOffset;
         let libHash = ZERO_HASH;
         if (this.startBlock <= libNum && this.endBlock >= libNum)
             libHash = this.getBlockHash(libNum);
@@ -117,17 +150,17 @@ export class MockChain {
         };
     }
 
-    generateHeadBlockResponse() {
-        const blockHash = this.getBlockHash(this.currentBlock);
+    generateHeadBlockResponse(blockNum: number) {
+        const blockHash = this.getBlockHash(blockNum);
 
-        const prevBlockNum = this.currentBlock - 1;
-        const prevHash = this.getBlockHash(prevBlockNum);
+        const prevBlockNum = blockNum - 1;
+        const prevHash = this.getBlockHash(prevBlockNum, this.jumpedLastBlock);
 
         const [libNum, libHash] = this.getLibBlock();
 
         return {
             head: {
-                block_num: this.currentBlock,
+                block_num: blockNum,
                 block_id: blockHash
             },
             last_irreversible: {
@@ -135,7 +168,7 @@ export class MockChain {
                 block_id: libHash
             },
             this_block: {
-                block_num: this.currentBlock,
+                block_num: blockNum,
                 block_id: blockHash
             },
             prev_block: {
@@ -143,7 +176,7 @@ export class MockChain {
                 block_id: prevHash
             },
             block: Serializer.encode(
-                {type: 'signed_block', abi: this.shipAbi, object: this.generateBlock(this.currentBlock)}),
+                {type: 'signed_block', abi: this.shipAbi, object: this.generateBlock(blockNum)}),
             traces: Serializer.encode(
                 {type: 'action_trace[]', abi: this.shipAbi, object: []}),
             deltas: Serializer.encode(
@@ -152,12 +185,12 @@ export class MockChain {
     }
 
     generateStatusResponse() {
-        const blockHash = this.getBlockHash(this.currentBlock);
+        const blockHash = this.getBlockHash(this.headBlockNum);
         const [libNum, libHash] = this.getLibBlock();
 
         return {
             head: {
-                block_num: this.currentBlock,
+                block_num: this.headBlockNum,
                 block_id: blockHash
             },
             last_irreversible: {
@@ -172,37 +205,48 @@ export class MockChain {
         }
     }
 
-    ackBlocks(amount: number) {
-        if (this.currentBlock + 1 > this.endBlock)
+    ackBlocks(sessionId: number, amount: number) {
+        const sesh = this.getSession(sessionId);
+
+        const currentBlock = sesh.currentBlock;
+        if (currentBlock > this.endBlock)
             return;
 
-        this.clientAckBlock += amount;
+        sesh.ackBlocks += amount;
     }
 
-    setBlock(num: number) {
-        this.currentBlock = num;
-        this.clientAckBlock = num;
+    private setBlock(num: number) {
+        this.headBlockNum = num;
+        for (const seshId in this.sessions) {
+            if (this.sessions[seshId].reachedHead) {
+                this.sessions[seshId].startBlock = num;
+                this.sessions[seshId].ackBlocks = 1;
+            }
+        }
+
         this.forkDB.block_id = this.getBlockHash(num);
         this.forkDB.block_num = num;
         this.jumpIndex++;
-        console.log(`CONTROL: set next block to ${num}`);
+        this.jumpedLastBlock = true;
+        this.log('info', `set next block to ${num}`);
     }
 
     increaseBlock() {
-        if (this.currentBlock + 1 > this.endBlock)
+        if (this.headBlockNum > this.endBlock)
             return;
 
         if (this.jumpIndex < this.jumps.length &&
-            this.currentBlock + 1 == this.jumps[this.jumpIndex][0]) {
+            this.headBlockNum == this.jumps[this.jumpIndex][0]) {
             this.setBlock(this.jumps[this.jumpIndex][1]);
-            this.jumpIndex++;
-        } else
-            this.currentBlock++;
+        } else {
+            this.headBlockNum++;
+            this.jumpedLastBlock = false;
+        }
     }
 
     generateChainInfo() {
-        const headBlock = this.generateBlock(this.currentBlock);
-        const headHash = this.getBlockHash(this.currentBlock);
+        const headBlock = this.generateBlock(this.headBlockNum);
+        const headHash = this.getBlockHash(this.headBlockNum);
 
         const [libNum, libHash] = this.getLibBlock();
         let libTimestamp = new Date(0).toISOString().slice(0, -1);
@@ -212,7 +256,7 @@ export class MockChain {
         return {
             server_version: 'cafebabe',
             chain_id: this.chainId,
-            head_block_num: this.currentBlock,
+            head_block_num: this.headBlockNum,
             last_irreversible_block_num: libNum,
             last_irreversible_block_id: libHash,
             head_block_id: headHash,
@@ -233,30 +277,184 @@ export class MockChain {
         };
     }
 
-    produceBlock(ws) {
-        if (this.currentBlock + 1 > this.endBlock)
-            return;
+    async produceBlock() {
+        if (this.pauseIndex < this.pauses.length) {
+            const [pauseBlock, pauseTime] = this.pauses[this.pauseIndex];
+            if (pauseBlock == this.headBlockNum) {
+                this.pauseHandler(pauseTime).then();
+                this.pauseIndex++;
+            }
+        }
 
-        if (this.currentBlock <= this.clientAckBlock) {
-            console.log('sending one block...')
-            const response = Serializer.encode({
-                type: "result",
-                abi: this.shipAbi,
-                object: ["get_blocks_result_v0", this.generateHeadBlockResponse()]
-            }).array;
-            this.increaseBlock();
-            ws.send(response);
+        this.log('debug', `producing block ${this.headBlockNum}`);
+
+        const headBlock = Serializer.encode({
+            type: "result",
+            abi: this.shipAbi,
+            object: ["get_blocks_result_v0", this.generateHeadBlockResponse(this.headBlockNum)]
+        }).array;
+        for (const id in this.sessions) {
+            const sesh = this.sessions[id];
+            if (this.headBlockNum <= sesh.startBlock + sesh.ackBlocks)
+                sesh.ws.send(headBlock);
         }
     }
 
-    startProduction(ws) {
-        console.log('starting production...');
-        this._produceTask = setInterval(() => {
-            this.produceBlock(ws)
-        }, 500);
+    async waitNextBlock() {
+        const now = new Date().getTime();
+        const nextBlockTime = getNextBlockTime();
+        await sleep(nextBlockTime.getTime() - now);
     }
 
-    stopProduction() {
-        clearInterval(this._produceTask);
+    startProducer() {
+        if (this.producerTaskRunning)
+            throw new Error('tried to start second producer task');
+
+        this.shouldProduce = true;
+        setTimeout(async () => {
+            this.producerTaskRunning = true;
+            await this.waitNextBlock();
+
+            while (this.shouldProduce &&
+                   this.headBlockNum <= this.endBlock) {
+                await this.produceBlock();
+
+                if (!this.asapMode)
+                    await this.waitNextBlock();
+
+                this.increaseBlock();
+            }
+            this.producerTaskRunning = false;
+        }, 0);
+    }
+
+    async stopProducer() {
+        this.shouldProduce = false;
+        while (this.producerTaskRunning)
+            await sleep(100);
+    }
+
+    initializeShipSession(ws) {
+        const seshId: number = this.lastSessionId++;
+
+        this.sessions[seshId] = {
+            ws,
+            syncTaskRunning: false,
+            shouldSync: false,
+            ackBlocks: 0,
+            startBlock: -1,
+            currentBlock: -1,
+            reachedHead: false
+        };
+
+        this.log('debug', `session ${seshId} created.`)
+        return seshId;
+    }
+
+    getSession(sessionId: number) {
+        if (!(sessionId in this.sessions))
+            throw new Error(`session ${sessionId} not found`);
+
+        return this.sessions[sessionId];
+    }
+
+    async stopSession(sessionId: number) {
+        const sesh = this.getSession(sessionId)
+
+        // stop sync task if present
+        if (sesh.shouldSync) {
+            sesh.shouldSync = false;
+
+            while(sesh.syncTaskRunning)
+                await sleep(20);
+        }
+
+        delete this.sessions[sessionId];
+        this.log('debug', `stopped session ${sessionId}`);
+    }
+    /**
+     * This function sets up the session parameters for block synchronization, starting from `start_block_num` 
+     * and targeting `end_block_num`. It performs a check to ensure the requested block range is within the 
+     * permissible range. If the range is valid, it updates the session's block range and starts a synchronization 
+     * task if necessary.
+     * 
+     * @param {number} sessionId - The unique identifier of the session.
+     * @param {Object} requestData - An object containing the block range for synchronization.
+     * @param {number} requestData.start_block_num - The starting block number for synchronization.
+     * @param {number} requestData.end_block_num - The ending block number for synchronization.
+     */
+    sessionGetBlocks(
+        sessionId: number,
+        requestData: {
+            start_block_num: number,
+            end_block_num: number
+        }
+    ) {
+        if (requestData.start_block_num < this.startBlock)
+            throw new Error('trying to initialize ship session outside the range');
+
+        const sesh = this.getSession(sessionId);
+
+        sesh.startBlock = requestData.start_block_num;
+        sesh.currentBlock = requestData.start_block_num;
+
+        if (requestData.start_block_num == this.headBlockNum) {
+            sesh.reachedHead = true;
+        } else {
+            sesh.shouldSync = true;
+            sesh.syncTaskRunning = true;
+
+            setTimeout(async () => {
+                this.log('debug', `start sync task for session ${sessionId}`);
+
+                while (sesh.shouldSync &&
+                       sesh.currentBlock < this.headBlockNum) {
+
+                    let ackedBlock = sesh.startBlock + sesh.ackBlocks;
+                    while (sesh.currentBlock <= ackedBlock) {
+                        const nextBlock = Serializer.encode({
+                            type: "result",
+                            abi: this.shipAbi,
+                            object: [
+                                "get_blocks_result_v0",
+                                this.generateHeadBlockResponse(sesh.currentBlock)
+                            ]
+                        }).array;
+                        sesh.ws.send(nextBlock);
+
+                         if (sesh.currentBlock % 100 == 0)
+                             this.log('debug', `session ${sessionId}: sent block ${sesh.currentBlock}`);
+
+                        sesh.currentBlock++;
+                    }
+                    await sleep(20);
+                }
+                sesh.reachedHead = true;
+                sesh.shouldSync = false;
+                sesh.syncTaskRunning = false;
+                this.log('debug', `sync task for session ${sessionId} ended.`);
+            }, 0);
+        }
+    }
+
+    sessionAckBlocks(sessionId: number, amount: number) {
+        const sesh = this.getSession(sessionId);
+
+        if (sesh.currentBlock + 1 > this.endBlock)
+            return;
+
+        sesh.ackBlocks += amount;
+    }
+
+    async fullStop() {
+        const tasks = [];
+        for (const sessionId in this.sessions) {
+            // @ts-ignore
+            tasks.push(this.stopSession(sessionId));
+        }
+
+        await Promise.all(tasks);
+
+        await this.stopProducer();
     }
 }

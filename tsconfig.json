@@ -5,6 +5,7 @@
     "baseUrl": "src",
     "module": "esnext",
     "outDir": "build",
+    "rootDir": "./src",
     "target": "esnext",
     "moduleResolution": "node",
     "declaration": true,
@@ -27,5 +28,5 @@
   },
   "compileOnSave": false,
   "exclude": ["node_modules", "dist", "build"],
-  "include": ["src"]
+  "include": ["src/**/*.ts"]
 }
