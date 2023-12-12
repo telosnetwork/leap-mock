@@ -1,20 +1,28 @@
 {
-  "name": "@guilledk/leap-mock",
-  "repository": "guilledk/leap-mock",
-  "version": "0.1.0",
+  "name": "leap-mock",
+  "repository": "git+https://github.com/guilledk/leap-mock.git",
+  "version": "0.1.1",
   "description": "AntelopeIO/leap mocker for advanced indexer testing",
   "main": "./build/main.js",
   "type": "module",
   "exports": {
-    ".": "./**/*.js"
+    "./chain.js": "./build/chain.js",
+    "./controller.js": "./build/controller.js",
+    "./controllerHTTPClient.js": "./build/controllerHTTPClient.js",
+    "./controllerRoutes.js": "./build/controllerRoutes.js",
+    "./controllerUtils.js": "./build/controllerUtils.js",
+    "./httpApiSocket.js": "./build/httpApiSocket.js",
+    "./shipSocket.js": "./build/shipSocket.js",
+    "./logging.js": "./build/logging.js",
+    "./utils.js": "./build/utils.js",
+
+    "./tests/utils.js": "./build/tests/utils.js"
   },
   "scripts": {
     "bootstrap": "sh -c 'yarn && cd node_modules/@eosrio/hyperion-sequential-reader && npm i && npx tsc'",
     "build": "npm run bootstrap && tsc && node scripts/create-dist-packages.mjs",
-
     "start": "node build/src/main.js",
     "test": "mocha build/tests/**/*.spec.js --timeout 120000",
-
     "docker-build": "npm run build && node scripts/docker-build.mjs",
     "docker-start": "node scripts/docker-run.mjs",
     "docker-stop": "node scripts/docker-stop.mjs",
