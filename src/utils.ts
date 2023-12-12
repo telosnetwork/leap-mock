@@ -2,7 +2,7 @@ import fs from 'fs';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 function loadAbi() {
-    const filePath = path.join(currentDir, '../shipAbi.json');
+    const filePath = path.join(currentDir, './shipAbi.json');
     return fs.readFileSync(filePath, 'utf-8');
 };
 

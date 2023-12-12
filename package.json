@@ -1,8 +1,8 @@
 {
-  "name": "ship-mock",
-  "repository": "guilledk/ship-mock",
+  "name": "leap-mock",
+  "repository": "guilledk/leap-mock",
   "version": "0.1.0",
-  "description": "",
+  "description": "AntelopeIO/leap mocker for advanced indexer testing",
   "main": "./build/src/main.js",
   "exports": {
     ".": {
@@ -11,10 +11,16 @@
   },
   "type": "module",
   "scripts": {
-    "build": "tsc && node scripts/create-dist-packages.mjs",
+    "bootstrap": "sh -c 'yarn && cd node_modules/@eosrio/hyperion-sequential-reader && npm i && npx tsc'",
+    "build": "npm run bootstrap && tsc && node scripts/create-dist-packages.mjs",
+
     "start": "node build/src/main.js",
-    "test-fork": "mocha build/tests/fork.spec.js --timeout 120000",
-    "test-reconnect": "mocha build/tests/reconnect.spec.js --timeout 120000"
+
+    "test": "mocha build/tests/**/*.spec.js --timeout 120000",
+
+    "docker-build": "npm run build && node scripts/docker-build.mjs",
+    "start-docker": "node scripts/docker-run.mjs",
+    "push-docker": "node scripts/docker-push.mjs"
   },
   "author": "",
   "license": "ISC",
@@ -27,6 +33,7 @@
     "chai": "^4.3.10",
     "commander": "^11.1.0",
     "express": "^4.18.2",
+    "winston": "^3.11.0",
     "ws": "^8.14.2"
   },
   "devDependencies": {

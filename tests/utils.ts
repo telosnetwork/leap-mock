@@ -1,7 +1,7 @@
-import {ChainDescriptor, ChainMap} from "../src/controller.js";
+import {ChainDescriptor, NewChainInfo} from "../src/controller.js";
 import {HyperionSequentialReader} from "@eosrio/hyperion-sequential-reader";
 import {sleep, randomHash} from "../src/utils.js";
-import console from "console";
+import {assert} from "chai";
 
 export function generateTestChainDescriptor(
     chainId?: string,
@@ -24,25 +24,17 @@ export function generateTestChainDescriptor(
     } as ChainDescriptor;
 }
 
-export function generateTestChainsInfo(): [string, ChainMap] {
-    const chains: ChainMap = {};
-    const chainDesc = generateTestChainDescriptor();
-    chains[chainDesc.chainId] = chainDesc;
-    return [chainDesc.chainId, chains];
-}
-
 export async function expectSequence(
-    shipPort: number,
-    httpPort: number,
+    chainInfo: NewChainInfo,
     blockSequence: number[]
-): Promise<number[]> {
+) {
     let i = 0;
     let reachedEnd = false;
     let isExpectedSequence = true;
     const receivedSequence = [];
     const reader = new HyperionSequentialReader({
-        shipApi: `ws://127.0.0.1:${shipPort}`,
-        chainApi: `http://127.0.0.1:${httpPort}`,
+        shipApi: `ws://127.0.0.1:${chainInfo.shipPort}`,
+        chainApi: `http://127.0.0.1:${chainInfo.httpPort}`,
         poolSize: 1,
         blockConcurrency: 1,
         outputQueueLimit: 10,
@@ -53,7 +45,7 @@ export async function expectSequence(
         if (!isExpectedSequence || reachedEnd)
             return;
 
-        console.log(`reader disconnected, restarting in 3 seconds...`);
+        reader.log('warning', `reader disconnected, restarting in 3 seconds...`);
         await sleep(3 * 1000);
         reader.restart();
     };
@@ -82,5 +74,6 @@ export async function expectSequence(
 
     reader.stop();
 
-    return receivedSequence;
+    return assert.deepStrictEqual(
+        receivedSequence, blockSequence, 'Received wrong sequence from ship');
 }

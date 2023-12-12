@@ -20,8 +20,7 @@ program
         if (options.controlPort)
             config.controlPort = parseInt(options.controlPort, 10);
 
-        const context = new ControllerContext(config);
-        await context.bootstrap();
+        await (new ControllerContext(config)).bootstrap();
     });
 
 program.parse(process.argv);

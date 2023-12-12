@@ -1,6 +1,7 @@
 import express, { Express, Request, Response } from 'express';
 import bodyParser from "body-parser";
 import {MockChain} from "./chain.js";
+import logger from "./logging.js";
 
 export class HTTPAPISocket {
     private chain: MockChain;
@@ -14,13 +15,15 @@ export class HTTPAPISocket {
         this.port = port;
     }
 
-    getPort(): number {
-        return this.port;
+    log(level: string, message: string) {
+        logger[level](`http-sock @ ${this.port}: ${message}`);
     }
 
     listen() {
         if (this.isListening)
             throw new Error('socket already listening');
+
+        const chainInfo = this.chain.generateChainInfo();
 
         this.expApp = express();
         this.expApp.use(bodyParser.json());
@@ -76,7 +79,7 @@ export class HTTPAPISocket {
         });
 
         this.server = this.expApp.listen(this.port, () => {
-            console.log(`Mock chain v1 api server running on http://127.0.0.1:${this.port}`);
+            this.log('debug', `serving /v1/chain for ${chainInfo.chain_id}`);
             this.isListening = true;
         });
     }
@@ -88,10 +91,10 @@ export class HTTPAPISocket {
         return new Promise((resolve, reject) => {
             this.server.close((error: any) => {
                 if (error) {
-                    console.error('Error closing Express server:', error);
+                    this.log('error', `while trying to close the server: ${error.message}`);
                     reject(error);
                 } else {
-                    console.log('Express server closed');
+                    this.log('debug', `${this.port} closed.`)
                     resolve();
                 }
                 this.isListening = false;

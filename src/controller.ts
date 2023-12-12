@@ -11,6 +11,7 @@ import {
 import {ShipSocket} from "./shipSocket.js";
 import {HTTPAPISocket} from "./httpApiSocket.js";
 import fs from "fs";
+import logger from "./logging.js";
 
 
 export interface ChainDescriptor {
@@ -46,6 +47,7 @@ export interface NewChainInfo {
 export interface ChainRuntime {
     chain: MockChain;
     network: {
+        isUp: boolean;
         shipSocket: ShipSocket;
         httpSocket: HTTPAPISocket;
     };
@@ -82,32 +84,29 @@ export class Controller {
 
     private chains: {[key: string]: ChainRuntime};
 
-    private isStopping: boolean = false;
+    private _isStopping: boolean = false;
 
     constructor(config: ControllerConfig) {
         this.config = config;
         this.chains = {};
     }
 
-    async initFromConfig() {
-        if (this.config.chains) {
-            const tasks = [];
-            for (const chainId in this.config.chains)
-                tasks.push(this.initializeChain(this.config.chains[chainId]));
-            await Promise.all(tasks);
-        }
+    log(level: string, message: string) {
+        logger[level](`controller: ${message}`);
     }
 
     chainNetworkUp(chainId: string) {
         const runtime = this.getRuntime(chainId);
         runtime.network.shipSocket.listen();
         runtime.network.httpSocket.listen();
+        runtime.network.isUp = true;
     }
 
     async chainNetworkDown(chainId: string) {
         const runtime = this.getRuntime(chainId);
         await runtime.network.shipSocket.close();
         await runtime.network.httpSocket.close();
+        runtime.network.isUp = false;
     }
 
     async initializeChain(desc: ChainDescriptor) {
@@ -123,7 +122,7 @@ export class Controller {
             blocks: [],
             asapMode: desc.asapMode ? desc.asapMode : false
         };
-        const pauseHandler = async function (time: number): Promise<void> {
+        const pauseHandler = async (time: number) => {
             await this.chainNetworkDown(infoObj.chainId);
             await sleep(time * 1000);
             this.chainNetworkUp(infoObj.chainId);
@@ -166,9 +165,9 @@ export class Controller {
         const shipSocket = new ShipSocket(chain, infoObj.shipPort);
         const httpSocket = new HTTPAPISocket(chain, infoObj.httpPort);
 
-        this.chains[desc.chainId] = {chain, network: {shipSocket, httpSocket}};
+        this.chains[desc.chainId] = {chain, network: {isUp: false, shipSocket, httpSocket}};
 
-        this.chainNetworkUp(desc.chainId);
+        // this.chainNetworkUp(desc.chainId);
 
         const displayInfo = {
             ...infoObj,
@@ -178,7 +177,8 @@ export class Controller {
                 length: infoObj.blocks[0].length
             }
         }
-        // console.log(`CONTROLLER: initialized chain: ${JSON.stringify(displayInfo, null, 4)}`)
+
+        this.log('info', `initialized chain: ${JSON.stringify(displayInfo, null, 4)}`);
 
         return infoObj;
     }
@@ -196,17 +196,14 @@ export class Controller {
         delete this.chains[chainId];
     }
 
+    isStopping(): boolean {
+        return this._isStopping;
+    }
+
     async fullStop() {
         const tasks = [];
         for (const chainId in this.chains)
             tasks.push(this.destroyChain(chainId));
         await Promise.all(tasks);
-    }
-
-    async exitHandler() {
-        if (!this.isStopping) {
-            this.isStopping = true;
-            await this.fullStop();
-        }
     }
 }

@@ -1,8 +1,8 @@
-import console from "console";
 import {Serializer} from "@greymass/eosio";
 import {WebSocket, WebSocketServer} from "ws";
 import {MockChain} from "./chain.js";
 import {DEFAULT_ABI_STRING} from "./utils.js";
+import logger from "./logging.js";
 
 export class ShipSocket {
     private chain: MockChain;
@@ -15,20 +15,20 @@ export class ShipSocket {
         this.port = port;
     }
 
-    getPort(): number {
-        return this.port;
+    log(level: string, message: string) {
+        logger[level](`ship-sock @ ${this.port}: ${message}`);
     }
 
     listen() {
         if (this.isListening)
             throw new Error('socket already listening');
 
+        const chainInfo = this.chain.generateChainInfo();
+
         this.chainWss = new WebSocketServer({port: this.port});
         this.chainWss.on('listening', (ws) => {
             this.isListening = true;
-        });
-        this.chainWss.on('close', (ws) => {
-            this.isListening = false;
+            this.log('debug', `serving ship for ${chainInfo.chain_id}`);
         });
         this.chainWss.on('connection', (ws) => {
             const sessionId = this.chain.initializeShipSession(ws);
@@ -58,7 +58,7 @@ export class ShipSocket {
                         this.chain.sessionAckBlocks(sessionId, requestData.num_messages);
                         break;
                     default:
-                        console.warn(`unhandled type: ${requestType}`);
+                        this.log('warn', `unhandled type: ${requestType}`);
                         break;
                 }
             });
@@ -70,6 +70,8 @@ export class ShipSocket {
         if (!this.isListening)
             throw new Error('socket not listening');
 
+        this.isListening = false;
+
         this.chainWss.clients.forEach((client: WebSocket) => {
             if (client.readyState === WebSocket.OPEN) {
                 client.close();
@@ -78,10 +80,10 @@ export class ShipSocket {
         return new Promise((resolve, reject) => {
             this.chainWss.close((error) => {
                 if (error) {
-                    console.error('Error closing WebSocket server:', error);
+                    this.log('error', `while trying to close the server: ${error.message}`);
                     reject(error);
                 } else {
-                    console.log('WebSocket server closed');
+                    this.log('debug', `${this.port} closed.`)
                     resolve();
                 }
             });

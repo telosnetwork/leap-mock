@@ -1,6 +1,6 @@
 import {getNextBlockTime, randomHash, sleep} from "./utils.js";
 import {ABI, Serializer} from "@greymass/eosio";
-import console from "console";
+import logger from "./logging.js";
 
 
 const libOffset = 333;
@@ -41,6 +41,7 @@ export class MockChain {
         block_num: 0
     };
 
+    private jumpedLastBlock: boolean = false;
     private shouldProduce: boolean;
     private producerTaskRunning: boolean;
 
@@ -75,16 +76,20 @@ export class MockChain {
         this.asapMode = asapMode;
     }
 
+    log(level: string, message: string) {
+        logger[level](`chain: ${message}`);
+    }
+
     setPauses(pauses: [number, number][]) {
         this.pauseIndex = 0;
         this.pauses = pauses;
-        console.log(`CONTROL: set pauses array of size ${pauses.length}`);
+        this.log('info', `set pauses array of size ${pauses.length}`);
     }
 
     setJumps(jumps: [number, number][], index: number) {
         this.jumpIndex = 0;
         this.jumps = jumps;
-        console.log(`CONTROL: set jumps array of size ${jumps.length} index ${index}`);
+        this.log('info', `set jumps array of size ${jumps.length} index ${index}`)
     }
 
     setBlockHistory(blocks: string[], index: number) {
@@ -96,14 +101,16 @@ export class MockChain {
         else
             this.blockHistory[index] = blocks;
 
-        console.log(`CONTROL: set blocks array of size ${blocks.length} index ${index}`);
+        this.log('info', `set blocks array of size ${blocks.length} index ${index}`)
     }
 
-    getBlockHash(blockNum: number): string {
+    getBlockHash(blockNum: number, prev: boolean = false): string {
         if (blockNum < (this.startBlock - 1) || blockNum > this.endBlock)
             throw new Error("Invalid range");
 
-        return this.blockHistory[this.jumpIndex][blockNum - this.startBlock + 1];
+        return this.blockHistory[
+            !prev ? this.jumpIndex : this.jumpIndex - 1
+        ][blockNum - this.startBlock + 1];
     }
 
     getLibBlock() : [number, string] {
@@ -147,7 +154,7 @@ export class MockChain {
         const blockHash = this.getBlockHash(blockNum);
 
         const prevBlockNum = blockNum - 1;
-        const prevHash = this.getBlockHash(prevBlockNum);
+        const prevHash = this.getBlockHash(prevBlockNum, this.jumpedLastBlock);
 
         const [libNum, libHash] = this.getLibBlock();
 
@@ -220,7 +227,8 @@ export class MockChain {
         this.forkDB.block_id = this.getBlockHash(num);
         this.forkDB.block_num = num;
         this.jumpIndex++;
-        console.log(`CONTROL: set next block to ${num}`);
+        this.jumpedLastBlock = true;
+        this.log('info', `set next block to ${num}`);
     }
 
     increaseBlock() {
@@ -230,8 +238,10 @@ export class MockChain {
         if (this.jumpIndex < this.jumps.length &&
             this.headBlockNum == this.jumps[this.jumpIndex][0]) {
             this.setBlock(this.jumps[this.jumpIndex][1]);
-        } else
+        } else {
             this.headBlockNum++;
+            this.jumpedLastBlock = false;
+        }
     }
 
     generateChainInfo() {
@@ -276,7 +286,7 @@ export class MockChain {
             }
         }
 
-        // console.log(`producing block ${this.headBlockNum}...`)
+        this.log('debug', `producing block ${this.headBlockNum}`);
 
         const headBlock = Serializer.encode({
             type: "result",
@@ -297,10 +307,9 @@ export class MockChain {
     }
 
     startProducer() {
-        if (this.producerTaskRunning) {
-            console.log(`WARNING!: tried to start second producer task, ignoring...`);
-            return;
-        }
+        if (this.producerTaskRunning)
+            throw new Error('tried to start second producer task');
+
         this.shouldProduce = true;
         setTimeout(async () => {
             this.producerTaskRunning = true;
@@ -338,7 +347,7 @@ export class MockChain {
             reachedHead: false
         };
 
-        // console.log(`session ${seshId} created.`)
+        this.log('debug', `session ${seshId} created.`)
         return seshId;
     }
 
@@ -361,7 +370,7 @@ export class MockChain {
         }
 
         delete this.sessions[sessionId];
-        // console.log(`stopped session ${sessionId}`)
+        this.log('debug', `stopped session ${sessionId}`);
     }
     /**
      * This function sets up the session parameters for block synchronization, starting from `start_block_num` 
@@ -396,7 +405,7 @@ export class MockChain {
             sesh.syncTaskRunning = true;
 
             setTimeout(async () => {
-                // console.log(`start sync task for session ${sessionId}`);
+                this.log('debug', `start sync task for session ${sessionId}`);
 
                 while (sesh.shouldSync &&
                        sesh.currentBlock < this.headBlockNum) {
@@ -412,8 +421,10 @@ export class MockChain {
                             ]
                         }).array;
                         sesh.ws.send(nextBlock);
-                        // if (sesh.currentBlock % 100 == 0)
-                            // console.log(`session ${sessionId}: sent block ${sesh.currentBlock}`)
+
+                         if (sesh.currentBlock % 100 == 0)
+                             this.log('debug', `session ${sessionId}: sent block ${sesh.currentBlock}`);
+
                         sesh.currentBlock++;
                     }
                     await sleep(20);
@@ -421,7 +432,7 @@ export class MockChain {
                 sesh.reachedHead = true;
                 sesh.shouldSync = false;
                 sesh.syncTaskRunning = false;
-                // console.log(`sync task for session ${sessionId} ended.`);
+                this.log('debug', `sync task for session ${sessionId} ended.`);
             }, 0);
         }
     }

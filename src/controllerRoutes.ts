@@ -44,6 +44,8 @@ const controllerRouter = (controller: Controller) => {
         const data = req.body;
         try {
             const runtime = controller.getRuntime(data.chainId);
+            if (!runtime.network.isUp)
+                controller.chainNetworkUp(data.chainId);
             runtime.chain.startProducer();
             res.json({result: 'ok'});
         } catch (e) {

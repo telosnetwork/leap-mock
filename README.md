@@ -1,32 +1,37 @@
-# Nodeos mocker
+# leap-mock
+Allows creation of mock Antelope chains for testing of weird block production scenarios, based on two main concepts:
 
-## Implemented apis:
-
-    http api:
-
-    - /v1/chain/get_info
-    - /v1/chain/get_block
-
-    websocket:
-
-    - state history block read protocol
+- Jumps: used to setup fork scenarios
+- Pauses: used to setup connection drop scenarios
 
 # Quickstart
 
-    # install deps
-    yarn
+    docker run -d --network=host guilledk/leap-mock
 
-    # compile
-    npm run build
+or with the repo cloned:
 
-    # tests
-    npm run test-fork
-    npm run test-reconnect
+    npm run start-docker
 
-    # start
-    npm run start
+This will serve the control api at port 6970
 
-This will serve the control api at port 6970:
+## Practical example:
+
+Let's say you wanted to test the fork handling machinery of a new state history indexer,
+first lets craft a [ChainDescriptor](src/controller.ts#L17) :
+
+```json
+{
+    "startBlock": 1,
+    "endBlock": 10,
+    "blockGenStrat": "inorder",
+    "jumps": [[5, 3]]
+}
+```
+
+If used as parameters for the `/create_chain` endpoint this `ChainDescriptor` will create a new chain with block
+range 1-10, with hashes of blocks beign just a hex of the block number, then if started, when this chain reaches block 5 it will jump back to block 3, simulating a fork.
+
+Remember to start block production the endpoint `/start` has to be called with the `chainId`.
 
 ## Endpoints
 
@@ -110,3 +115,18 @@ This will serve the control api at port 6970:
 - **Response**:
   - Success: Confirmation message (`'ok'`).
   - Error: Error message.
+
+## Implemented mock apis:
+
+    http api:
+
+    - /v1/chain/get_info
+    - /v1/chain/get_block
+
+    websocket:
+
+    - state history block read protocol
+
+## Testing:
+
+Check the `tests/` directory to see how to integrate `leap-mock` into `mocha` based tests.
