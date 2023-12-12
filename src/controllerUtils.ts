@@ -95,7 +95,6 @@ export class ControllerContext {
             if (this.controller.isStopping())
                 return;
 
-            await this.controller.fullStop();
             await this.teardown();
         };
 
@@ -107,8 +106,9 @@ export class ControllerContext {
     }
 
     async teardown() {
+        await this.controller.fullStop();
         this.connections.forEach(curr => curr.end());
-        await new Promise<void>((resolve, reject) => {
+        return await new Promise<void>((resolve, reject) => {
             this.server.close((err) => {
                 if (err) {
                     this.log('error', `Error closing the server: ${err.message}`);
@@ -119,6 +119,5 @@ export class ControllerContext {
                 }
             });
         });
-        return await this.controller.fullStop();
     }
 }
