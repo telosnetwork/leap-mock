@@ -11,7 +11,7 @@ import {
 import {ShipSocket} from "./shipSocket.js";
 import {HTTPAPISocket} from "./httpApiSocket.js";
 import fs from "fs";
-import logger from "./logging.js";
+import {logger} from "./logging.js";
 
 
 export interface ChainDescriptor {

@@ -1,7 +1,7 @@
 import express, { Express, Request, Response } from 'express';
 import bodyParser from "body-parser";
 import {MockChain} from "./chain.js";
-import logger from "./logging.js";
+import {logger} from "./logging.js";
 
 export class HTTPAPISocket {
     private chain: MockChain;

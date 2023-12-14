@@ -5,7 +5,7 @@ import * as http from "http";
 import process from "process";
 import ControllerHTTPClient from "./controllerHTTPClient.js";
 import {generateTestChainDescriptor} from "./tests/utils.js";
-import logger from "./logging.js";
+import {logger} from "./logging.js";
 
 process.on('unhandledRejection', error => {
     logger.error('Unhandled Rejection');

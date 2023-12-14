@@ -1,6 +1,6 @@
 import {getNextBlockTime, randomHash, sleep} from "./utils.js";
 import {ABI, Serializer} from "@greymass/eosio";
-import logger from "./logging.js";
+import {logger} from "./logging.js";
 
 
 const libOffset = 333;

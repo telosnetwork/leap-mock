@@ -2,7 +2,7 @@ import {Serializer} from "@greymass/eosio";
 import {WebSocket, WebSocketServer} from "ws";
 import {MockChain} from "./chain.js";
 import {DEFAULT_ABI_STRING} from "./utils.js";
-import logger from "./logging.js";
+import {logger} from "./logging.js";
 
 export class ShipSocket {
     private chain: MockChain;

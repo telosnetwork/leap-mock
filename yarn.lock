@@ -25,7 +25,7 @@
 
 "@eosrio/hyperion-sequential-reader@https://github.com/eosrio/hyperion-sequential-reader.git#hist_buf_size":
   version "1.2.5"
-  resolved "git+ssh://git@github.com/eosrio/hyperion-sequential-reader.git#87839c6cfa5b2a5df017c36bb65e7edd17ae80ba"
+  resolved "https://github.com/eosrio/hyperion-sequential-reader.git#e6903a90989350ad31a566835d12b77e603c0c44"
   dependencies:
     "@greymass/eosio" "0.6.11"
     async "^3.2.4"
