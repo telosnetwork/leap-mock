@@ -81,3 +81,12 @@ export async function expectSequence(
     return assert.deepStrictEqual(
         receivedSequence, blockSequence, 'Received wrong sequence from ship');
 }
+
+import { JsonRpc } from 'eosjs';
+
+// @ts-ignore
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+
+export function getRPCClient(endpoint: string) {
+    return new JsonRpc(endpoint, { fetch });
+}

@@ -1,7 +1,7 @@
 import {ControllerContext} from "../controllerUtils.js";
 import {ControllerConfig} from "../controller.js";
 import {AntelopeTransfer, getRandomPort} from "../utils.js";
-import {expectSequence} from "./utils.js";
+import {expectSequence, getRPCClient} from "./utils.js";
 import {assert} from "chai";
 
 
@@ -82,5 +82,20 @@ describe('Hyperion In Order Sequence', async function () {
 
         assert.equal(balanceRows.length, 1, 'Balance row not found for alice!');
         assert.equal(balanceRows[0].balance.toString(), quantity);
+
+        const rpc = getRPCClient(`http://127.0.0.1:${chainInfo.httpPort}`);
+
+        const balanceHttpRows = await rpc.get_table_rows({
+            json: true,
+            code: 'eosio.token',
+            table: 'accounts',
+            scope: 'alice'
+        });
+
+        assert.equal(
+            JSON.stringify(balanceRows),
+            JSON.stringify(balanceHttpRows.rows),
+            'Rows fetched from http endpoint dont match internal'
+        );
     });
 });

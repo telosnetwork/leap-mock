@@ -78,6 +78,27 @@ export class HTTPAPISocket {
             res.json(this.chain.generateChainInfo());
         });
 
+
+        // Get table rows
+        this.expApp.get('/v1/chain/get_table_rows', (req: Request, res: Response) => {
+            const data = req.params;
+            res.json({
+                rows: this.chain.getTableRows(data.code, data.table, data.scope),
+                more: false,
+                next_key: ''
+            });
+        });
+
+        this.expApp.post('/v1/chain/get_table_rows', (req: Request, res: Response) => {
+            const data = req.body;
+            res.json({
+                rows: this.chain.getTableRows(data.code, data.table, data.scope),
+                more: false,
+                next_key: ''
+            });
+        });
+
+
         this.server = this.expApp.listen(this.port, () => {
             this.log('debug', `serving /v1/chain for ${chainInfo.chain_id}`);
             this.isListening = true;

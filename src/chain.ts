@@ -17,6 +17,11 @@ interface ShipSession {
     reachedHead: boolean
 };
 
+interface ApplyContext {
+    contractTables: any;
+    params: any;
+}
+
 export class MockChain {
     shipAbi: ABI;
 
@@ -50,6 +55,7 @@ export class MockChain {
         block_id: ZERO_HASH,
         block_num: 0
     };
+    private txAppliers: {[key: string]: (ctx: ApplyContext) => void } = {};
 
     private jumpedLastBlock: boolean = false;
     private shouldProduce: boolean;
@@ -88,6 +94,18 @@ export class MockChain {
 
         this.asapMode = asapMode;
         this.tokenSymbol = tokenSymbol;
+
+        this.txAppliers['eosio.token::transfer'] = (ctx: ApplyContext) => {
+            if (!(ctx.params.to in ctx.contractTables.accounts)) {
+                ctx.contractTables.accounts[ctx.params.to] = [{
+                    balance: Asset.fromFloat(0, this.tokenSymbol)
+                }];
+            }
+
+            const row = ctx.contractTables.accounts[ctx.params.to][0];
+            const newBalance: number = row.balance.value + ctx.params.quantity.value;
+            ctx.contractTables.accounts[ctx.params.to] = [{balance: Asset.fromFloat(newBalance, this.tokenSymbol)}];
+        };
     }
 
     log(level: string, message: string) {
@@ -396,32 +414,17 @@ export class MockChain {
                     const contractTables = this.db[contract];
                     const actionName = actionTrace.act.name;
 
-                    if (contract == 'eosio.token') {
-                        if (actionName == 'transfer') {
-                            // @ts-ignore
-                            const transferParams: {
-                                from: string,
-                                to: string,
-                                quantity: Asset,
-                                memo: string
-                            } = Serializer.decode({
-                                data: actionTrace.act.data,
-                                type: actionTrace.act.name,
-                                abi: contractABI,
-                                ignoreInvalidUTF8: true
-                            });
+                    const params = Serializer.decode({
+                        data: actionTrace.act.data,
+                        type: actionTrace.act.name,
+                        abi: contractABI,
+                        ignoreInvalidUTF8: true
+                    });
 
-                            if (!(transferParams.to in contractTables.accounts)) {
-                                contractTables.accounts[transferParams.to] = [{
-                                    balance: Asset.fromFloat(0, this.tokenSymbol)
-                                }];
-                            }
+                    const applyHandlerName = `${contract}::${actionName}`;
 
-                            const row = contractTables.accounts[transferParams.to][0];
-                            const newBalance: number = row.balance.value + transferParams.quantity.value;
-                            contractTables.accounts[transferParams.to] = [{balance: Asset.fromFloat(newBalance, this.tokenSymbol)}];
-                        }
-                    }
+                    if (applyHandlerName in this.txAppliers)
+                        this.txAppliers[applyHandlerName]({contractTables, params});
                 }
             }
         }
