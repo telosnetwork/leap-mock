@@ -1,7 +1,7 @@
 import {MockChain} from "./chain.js";
-import {ABI} from "@greymass/eosio";
+import {ABI, Asset} from "@greymass/eosio";
 import {
-    DEFAULT_ABI,
+    DEFAULT_ABI, DEFAULT_CONTRACTS,
     generateInOrderBlockHashes,
     generateRandomHashes,
     getNextBlockTime,
@@ -12,6 +12,7 @@ import {ShipSocket} from "./shipSocket.js";
 import {HTTPAPISocket} from "./httpApiSocket.js";
 import fs from "fs";
 import {logger} from "./logging.js";
+import {ActionDescriptor} from "./types";
 
 
 export interface ChainDescriptor {
@@ -29,6 +30,11 @@ export interface ChainDescriptor {
 
     blockGenStrat?: string;
     blocks?: string[][];
+
+    txs?: {[key: number]: ActionDescriptor[]};
+    contracts?: {[key: string]: ABI};
+    tokenSymbol?: string;
+
     jumps?: [number, number][];
     pauses?: [number, number][];
 }
@@ -42,6 +48,7 @@ export interface NewChainInfo {
     blockGenStrat?: string;
     blocks: string[][];
     asapMode: boolean;
+    tokenSymbol: Asset.Symbol;
 }
 
 export interface ChainRuntime {
@@ -120,7 +127,8 @@ export class Controller {
             startTime: desc.startTime ? desc.startTime : getNextBlockTime().toISOString(),
             abi: desc.abi ? desc.abi : DEFAULT_ABI,
             blocks: [],
-            asapMode: desc.asapMode ? desc.asapMode : false
+            asapMode: desc.asapMode ? desc.asapMode : false,
+            tokenSymbol: desc.tokenSymbol ? Asset.Symbol.from(desc.tokenSymbol) : Asset.Symbol.fromParts('TLOS', 4)
         };
         const pauseHandler = async (time: number) => {
             await this.chainNetworkDown(infoObj.chainId);
@@ -133,7 +141,8 @@ export class Controller {
             desc.startBlock, desc.endBlock,
             infoObj.abi,
             pauseHandler.bind(this),
-            infoObj.asapMode
+            infoObj.asapMode,
+            infoObj.tokenSymbol
         );
 
         const rangeSize = desc.endBlock - desc.startBlock + 1;
@@ -161,6 +170,14 @@ export class Controller {
 
         for(let i = 0; i < infoObj.blocks.length; i++)
             chain.setBlockHistory(infoObj.blocks[i], i);
+
+        if (desc.contracts)
+            chain.setContracts(desc.contracts);
+        else
+            chain.setContracts(DEFAULT_CONTRACTS);
+
+        if (desc.txs)
+            chain.setTransactions(desc.txs);
 
         const shipSocket = new ShipSocket(chain, infoObj.shipPort);
         const httpSocket = new HTTPAPISocket(chain, infoObj.httpPort);

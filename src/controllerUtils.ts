@@ -6,6 +6,8 @@ import process from "process";
 import ControllerHTTPClient from "./controllerHTTPClient.js";
 import {generateTestChainDescriptor} from "./tests/utils.js";
 import {logger} from "./logging.js";
+import {ABI} from "@greymass/eosio";
+import {ActionDescriptor} from "./types";
 
 process.on('unhandledRejection', error => {
     logger.error('Unhandled Rejection');
@@ -45,6 +47,8 @@ export class ControllerContext {
             blocks?: string[][],
             jumps?: [number, number][],
             pauses?: [number, number][],
+            contracts?: {[key: string]: ABI},
+            txs?: {[key: number]: ActionDescriptor[]}
         }
     ) {
         const desc = generateTestChainDescriptor();

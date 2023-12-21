@@ -1,6 +1,6 @@
 import {ChainDescriptor, NewChainInfo} from "../controller.js";
 import {HyperionSequentialReader} from "@eosrio/hyperion-sequential-reader";
-import {sleep, randomHash} from "../utils.js";
+import {sleep, randomHash, DEFAULT_CONTRACTS} from "../utils.js";
 import {assert} from "chai";
 import {logger} from "../logging.js";
 
@@ -50,6 +50,9 @@ export async function expectSequence(
         await sleep(3 * 1000);
         reader.restart();
     };
+
+    for (const name in DEFAULT_CONTRACTS)
+        reader.addContract(name, DEFAULT_CONTRACTS[name]);
 
     let pushedLastUpdate = 0;
     let lastUpdateTime = new Date().getTime() / 1000;

@@ -1,6 +1,7 @@
-import {getNextBlockTime, randomHash, sleep} from "./utils.js";
-import {ABI, Serializer} from "@greymass/eosio";
+import {addSecondsToDate, generateActionTrace, getNextBlockTime, randomHash, randomInt, sleep} from "./utils.js";
+import {ABI, Asset, Int64, Serializer} from "@greymass/eosio";
 import {logger} from "./logging.js";
+import {ActionDescriptor, ActionTrace, TransactionTraceOptions} from "./types";
 
 
 const libOffset = 333;
@@ -25,6 +26,15 @@ export class MockChain {
     private chainId: string;
     private startTime: string;
     private blockHistory: string[][];
+    private transactions: {[key: number]: TransactionTraceOptions[]};
+    private contracts: {[key: string]: ABI};
+
+    private tokenSymbol: Asset.Symbol;
+    private db = {
+        'eosio.token': {
+            'accounts': {}
+        }
+    };
 
     private jumps: [number, number][];
     private jumpIndex: number;
@@ -54,7 +64,8 @@ export class MockChain {
         endBlock: number,
         shipAbi: ABI,
         pauseHandler: (time: number) => Promise<void>,
-        asapMode: boolean = false
+        asapMode: boolean = false,
+        tokenSymbol: Asset.Symbol
     ) {
         this.chainId = chainId;
         this.startTime = startTime;
@@ -65,6 +76,8 @@ export class MockChain {
 
         this.headBlockNum = startBlock;
 
+        this.transactions = {};
+
         this.jumps = [];
         this.jumpIndex = 0;
 
@@ -74,6 +87,7 @@ export class MockChain {
         this.blockHistory = [];
 
         this.asapMode = asapMode;
+        this.tokenSymbol = tokenSymbol;
     }
 
     log(level: string, message: string) {
@@ -104,6 +118,48 @@ export class MockChain {
         this.log('info', `set blocks array of size ${blocks.length} index ${index}`)
     }
 
+    setContracts(contracts: {[key: string]: ABI}) {
+        this.contracts = contracts;
+    }
+
+    setTransactions(actions: {[key: number]: ActionDescriptor[]}) {
+        let globalSequence = 0;
+        for (const blockNum in actions) {
+            let actionOrdinal = 1;
+            this.transactions[blockNum] = [];
+            const generatedActions: ['action_trace_v1', ActionTrace][] = [];
+            for (const action of actions[blockNum]) {
+                generatedActions.push(
+                    generateActionTrace(
+                        actionOrdinal, globalSequence,
+                        this.contracts[action.account],
+                        action
+                    )
+                );
+                actionOrdinal++;
+            }
+            this.transactions[blockNum].push({action_traces: generatedActions});
+            globalSequence++;
+        }
+    }
+
+    getTableRows(code: string, table: string, scope: string) {
+        if (!(code in this.contracts))
+            throw new Error(`Fail to retrieve account for ${code}`);
+
+        const abiTable = this.contracts[code].tables.find(t => t.name == table);
+        if (!abiTable)
+            throw new Error(`Table ${table} is not specified in the ABI`);
+
+        let rows = [];
+
+        if (table in this.db[code])
+            if (scope in this.db[code][table])
+                rows = this.db[code][table][scope];
+
+        return rows;
+    }
+
     getBlockHash(blockNum: number, prev: boolean = false): string {
         if (blockNum < (this.startBlock - 1) || blockNum > this.endBlock)
             throw new Error("Invalid range");
@@ -124,14 +180,52 @@ export class MockChain {
         return [libNum, libHash];
     }
 
-    generateBlock(blockNum: number) {
+    getBlockTimestamp(blockNum: number) {
         const startTime = new Date(this.startTime).getTime();
-        if (isNaN(startTime)) {
-            throw new Error('Invalid startTime');
-        }
-        const blockTimestampMs = startTime + (blockNum * 500);
-        const blockTimestamp = new Date(blockTimestampMs);
 
+        if (isNaN(startTime))
+            throw new Error('Invalid startTime');
+
+        const blockTimestampMs = startTime + (blockNum * 500);
+        return  new Date(blockTimestampMs);
+    }
+
+    getTxTraces(blockNum: number) {
+        const traces = [];
+        if (blockNum in this.transactions) {
+            for (const txDesc of this.transactions[blockNum]) {
+                traces.push(['transaction_trace_v0', {
+                    id: txDesc.id ? txDesc.id : randomHash(),
+                    status: txDesc.status ? txDesc.status : 0,
+                    cpu_usage_us: txDesc.cpu_usage_us ? txDesc.cpu_usage_us : randomInt(800, 1200),
+                    net_usage_words: txDesc.net_usage_words ? txDesc.net_usage_words : randomInt(18, 42),
+                    elapsed: txDesc.elapsed ? txDesc.elapsed : 0,
+                    net_usage: txDesc.net_usage ? txDesc.net_usage : 0,
+                    scheduled: txDesc.scheduled ? txDesc.scheduled : false,
+                    action_traces: txDesc.action_traces,
+                    partial: txDesc.partial ? txDesc.partial : ['partial_transaction_v0', {
+                        expiration: addSecondsToDate(this.getBlockTimestamp(blockNum), randomInt(20, 30)).toISOString().substring(0, 19),
+                        ref_block_num: 1,
+                        ref_block_prefix: 0,
+                        max_net_usage_words: 0,
+                        max_cpu_usage_ms: 0,
+                        delay_sec: 0,
+                        transaction_extensions: [],
+                        signatures: [],
+                        context_free_data: []
+                    }],
+                    account_ram_delta: null,
+                    except: null,
+                    error_code: null,
+                    failed_dtrx_trace: null
+                }]);
+            }
+        }
+        return traces;
+    }
+
+    generateBlock(blockNum: number) {
+        const blockTimestamp = this.getBlockTimestamp(blockNum);
         const prevHash = this.getBlockHash(blockNum - 1);
 
         return {
@@ -158,6 +252,8 @@ export class MockChain {
 
         const [libNum, libHash] = this.getLibBlock();
 
+        const block = this.generateBlock(blockNum);
+
         return {
             head: {
                 block_num: blockNum,
@@ -176,9 +272,9 @@ export class MockChain {
                 block_id: prevHash
             },
             block: Serializer.encode(
-                {type: 'signed_block', abi: this.shipAbi, object: this.generateBlock(blockNum)}),
+                {type: 'signed_block', abi: this.shipAbi, object: block}),
             traces: Serializer.encode(
-                {type: 'action_trace[]', abi: this.shipAbi, object: []}),
+                {type: 'transaction_trace[]', abi: this.shipAbi, object: this.getTxTraces(blockNum)}),
             deltas: Serializer.encode(
                 {type: 'table_delta[]', abi: this.shipAbi, object: []})
         }
@@ -283,6 +379,50 @@ export class MockChain {
             if (pauseBlock == this.headBlockNum) {
                 this.pauseHandler(pauseTime).then();
                 this.pauseIndex++;
+            }
+        }
+
+        // apply txs
+        if (this.headBlockNum in this.transactions) {
+            const txs = this.transactions[this.headBlockNum];
+            for (const tx of txs) {
+                for (const [_, actionTrace] of tx.action_traces) {
+                    const contract = actionTrace.act.account;
+
+                    if (!(contract in this.contracts))
+                        continue;
+
+                    const contractABI = this.contracts[contract];
+                    const contractTables = this.db[contract];
+                    const actionName = actionTrace.act.name;
+
+                    if (contract == 'eosio.token') {
+                        if (actionName == 'transfer') {
+                            // @ts-ignore
+                            const transferParams: {
+                                from: string,
+                                to: string,
+                                quantity: Asset,
+                                memo: string
+                            } = Serializer.decode({
+                                data: actionTrace.act.data,
+                                type: actionTrace.act.name,
+                                abi: contractABI,
+                                ignoreInvalidUTF8: true
+                            });
+
+                            if (!(transferParams.to in contractTables.accounts)) {
+                                contractTables.accounts[transferParams.to] = [{
+                                    balance: Asset.fromFloat(0, this.tokenSymbol)
+                                }];
+                            }
+
+                            const row = contractTables.accounts[transferParams.to][0];
+                            const newBalance: number = row.balance.value + transferParams.quantity.value;
+                            contractTables.accounts[transferParams.to] = [{balance: Asset.fromFloat(newBalance, this.tokenSymbol)}];
+                        }
+                    }
+                }
             }
         }
 

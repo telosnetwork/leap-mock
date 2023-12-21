@@ -1,7 +1,8 @@
 import {ControllerContext} from "../controllerUtils.js";
 import {ControllerConfig} from "../controller.js";
-import {getRandomPort} from "../utils.js";
+import {AntelopeTransfer, getRandomPort} from "../utils.js";
 import {expectSequence} from "./utils.js";
+import {assert} from "chai";
 
 
 describe('Hyperion In Order Sequence', async function () {
@@ -61,5 +62,25 @@ describe('Hyperion In Order Sequence', async function () {
     it(testReconMultiName, async function () {
         const chainInfo = context.getTestChain(testReconMultiName);
         return await expectSequence(chainInfo, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    });
+
+    const testTransfer = 'simple token transfer';
+    const quantity = '420.0000 TLOS';
+    context.registerTestChain(testTransfer, {
+        txs: {
+            1: [new AntelopeTransfer({from: 'eosio', to: 'alice', quantity})]
+        }
+    });
+    it(testTransfer, async function () {
+        const chainInfo = context.getTestChain(testTransfer);
+        await expectSequence(
+            chainInfo,
+            [1]
+        );
+        const runtime = context.controller.getRuntime(chainInfo.chainId);
+        const balanceRows = runtime.chain.getTableRows('eosio.token', 'accounts', 'alice');
+
+        assert.equal(balanceRows.length, 1, 'Balance row not found for alice!');
+        assert.equal(balanceRows[0].balance.toString(), quantity);
     });
 });
