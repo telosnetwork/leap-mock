@@ -1,15 +1,29 @@
-import {describeMockChainTests, getRPCClient} from "./utils.js";
-import {AccountsRow, AntelopeTransfer} from "../action-mockers/eosio.token/index.js";
+import {describeMockChainTests} from "./utils.js";
+import {AccountsRow, AntelopeTransfer} from "../mock/eosio.token/index.js";
 import {ControllerContext} from "../controllerUtils.js";
 import {ChainRuntime, NewChainInfo} from "../controller.js";
-import {assert} from "chai";
-import {AccountRow, TelosEVMCreate, TelosEVMOpenWallet} from "../action-mockers/telos.evm/index.js";
-import {Asset, Name} from "@greymass/eosio";
-import {addressToChecksum160, addressToSHA256, assetQuantityToEvm, randomByteArray} from "../utils.js";
+import {assert, expect} from "chai";
+import {
+    buildEVMTx,
+    getEVMBalanceForAccount, getEVMBalanceForAccountHTTP,
+    getEVMBalanceForAddress, getEVMBalanceForAddressHTTP,
+    TelosEVMCreate,
+    TelosEVMOpenWallet,
+    TelosEVMRaw, TelosEVMWithdraw
+} from "../mock/telos.evm/index.js";
+import {addressToChecksum160, assetQuantityToEvm, randomByteArray} from "../utils.js";
 import {Address} from "@ethereumjs/util";
+import {getBalanceForAccount, getBalanceForAccountHTTP} from "../mock/eosio.token/utils.js";
 
 const quantity = '420.0000 TLOS'
-const testDepositAddr = new Address(randomByteArray(20));
+
+const testPrivateKeys = [];
+const testAddresses = [];
+for (let i = 0; i < 10; i++) {
+    const priv = randomByteArray(32);
+    testPrivateKeys.push(priv);
+    testAddresses.push(Address.fromPrivateKey(priv));
+}
 
 describeMockChainTests(
     'Hyperion In Order Sequence',
@@ -44,25 +58,21 @@ describeMockChainTests(
                 }
             },
             testFn: async function (context: ControllerContext, chainInfo: NewChainInfo, runtime: ChainRuntime): Promise<void> {
-                const balanceRows = runtime.chain.getDB().getTableRows('eosio.token', 'accounts', 'alice') as AccountsRow[];
+                const balanceRows = getBalanceForAccount(runtime, 'alice');
 
-                assert.equal(balanceRows.length, 1, 'Balance row not found for alice!');
-                assert.equal(balanceRows[0].balance.toString(), quantity);
+                expect(balanceRows, 'Balance row not found for alice!').to.not.be.undefined;
+                expect(
+                    balanceRows.balance.toString() == quantity,
+                    'Balance mistmach for alice!'
+                ).to.be.true;
 
-                const rpc = getRPCClient(`http://127.0.0.1:${chainInfo.httpPort}`);
-       
-                const balanceHttpRows = await rpc.get_table_rows({
-                    json: true,
-                    code: 'eosio.token',
-                    table: 'accounts',
-                    scope: 'alice'
-                });
-       
-                assert.equal(
-                    JSON.stringify(balanceRows),
-                    JSON.stringify(balanceHttpRows.rows),
+                const rpc = context.controller.getRPC(chainInfo.chainId);
+                const balanceHttpRows = await getBalanceForAccountHTTP(rpc, 'alice') as AccountsRow;
+
+                expect(
+                    balanceRows.balance.equals(balanceHttpRows.balance),
                     'Rows fetched from http endpoint dont match internal'
-                );
+                ).to.be.true;
             }
         },
         'simple evm deposit': {
@@ -76,78 +86,105 @@ describeMockChainTests(
                 }
             },
             testFn: async function (context: ControllerContext, chainInfo: NewChainInfo, runtime: ChainRuntime): Promise<void> {
-                const getBalanceForAccount = (account: string) => runtime.chain.getDB().getTableRowsAPI({
-                    code: 'eosio.evm', table: 'account', scope: 'eosio.evm',
-                    key_type: 'i64',
-                    index_position: 2,
-                    lower_bound: Name.from(account).value.toString(),
-                    upper_bound: Name.from(account).value.toString(),
-                    limit: 1
-                }) as AccountRow[];
+                const alice0Balance = getEVMBalanceForAccount(runtime, 'alice0');
+                const alice1Balance = getEVMBalanceForAccount(runtime, 'alice1');
+                const alice2Balance = getEVMBalanceForAccount(runtime, 'alice2');
 
-                const alice0Balance = getBalanceForAccount('alice0');
-                const alice1Balance = getBalanceForAccount('alice1');
-                const alice2Balance = getBalanceForAccount('alice2');
+                expect(alice0Balance, 'Balance row not found for alice0!').to.not.be.undefined;
+                expect(alice2Balance, 'Balance row not found for alice2!').to.not.be.undefined;
+                assert.equal(alice0Balance.balance, BigInt(0), 'Non zero balance for alice0!');
+                assert.equal(alice2Balance.balance, BigInt(0), 'Non zero balance for alice2!');
 
-                assert.equal(alice0Balance.length, 1, 'Balance row not found for alice0!');
-                assert.equal(alice2Balance.length, 1, 'Balance row not found for alice2!');
-                assert.equal(alice0Balance[0].balance, BigInt(0), 'Non zero balance for alice0!');
-                assert.equal(alice2Balance[0].balance, BigInt(0), 'Non zero balance for alice2!');
+                expect(alice1Balance, 'Balance row not found for alice1!').to.not.be.undefined;
+                assert.equal(alice1Balance.balance, assetQuantityToEvm(quantity), 'Balance row not found for alice1!');
 
-                assert.equal(alice1Balance.length, 1, 'Balance row not found for alice1!');
-                assert.equal(alice1Balance[0].balance, assetQuantityToEvm(Asset.from(quantity)), 'Balance row not found for alice1!');
+                const rpc = context.controller.getRPC(chainInfo.chainId);
+                const balanceHttpRow = await getEVMBalanceForAccountHTTP(rpc, 'alice1');
 
-                const rpc = getRPCClient(`http://127.0.0.1:${chainInfo.httpPort}`);
-
-                const balanceHttpRows = (await rpc.get_table_rows({
-                    json: true,
-                    code: 'eosio.evm', table: 'account', scope: 'eosio.evm',
-                    key_type: 'i64',
-                    index_position: 2,
-                    lower_bound: Name.from('alice1').value.toString(),
-                    upper_bound: Name.from('alice1').value.toString(),
-                    limit: 1
-                })).rows;
-
-                assert.equal(BigInt(balanceHttpRows[0].balance), alice1Balance[0].balance, 'Internal get table rows doesnt match http api')
+                expect(balanceHttpRow, 'Balance row not found over http!').to.not.be.undefined;
+                assert.equal(balanceHttpRow.balance, alice1Balance.balance, 'Internal get table rows doesnt match http api')
             }
         },
         'evm deposit address in memo': {
             sequence: [1, 2],
             chainConfig: {
                 txs: {
-                    1: [new TelosEVMOpenWallet({account: 'alice', address: addressToChecksum160(testDepositAddr)})],
-                    2: [new AntelopeTransfer({from: 'alice', to: 'eosio.evm', quantity, memo: testDepositAddr.toString()})]
+                    1: [new TelosEVMOpenWallet({account: 'alice', address: addressToChecksum160(testAddresses[0])})],
+                    2: [new AntelopeTransfer({from: 'alice', to: 'eosio.evm', quantity, memo: testAddresses[0].toString()})]
                 }
             },
             testFn: async function (context: ControllerContext, chainInfo: NewChainInfo, runtime: ChainRuntime): Promise<void> {
-                const getBalanceForAddress = (addr: Address) => runtime.chain.getDB().getTableRowsAPI({
-                    code: 'eosio.evm', table: 'account', scope: 'eosio.evm',
-                    key_type: 'sha256',
-                    index_position: 3,
-                    lower_bound: addressToSHA256(addr).toString(),
-                    upper_bound: addressToSHA256(addr).toString(),
-                    limit: 1
-                });
+                const addrBalance = getEVMBalanceForAddress(runtime, testAddresses[0]);
 
-                const addrBalance = getBalanceForAddress(testDepositAddr) as AccountRow[];
+                expect(addrBalance, 'Balance row not found for deposit addr!').to.not.be.undefined;
+                assert.equal(addrBalance.balance, assetQuantityToEvm(quantity), 'Balance mismatch for deposit addr!');
 
-                assert.equal(addrBalance.length, 1, 'Balance row not found for deposit addr!');
-                assert.equal(addrBalance[0].balance, assetQuantityToEvm(Asset.from(quantity)), 'Balance mismatch for deposit addr!');
+                const rpc = context.controller.getRPC(chainInfo.chainId);
+                const balanceHttpRow = await getEVMBalanceForAddressHTTP(rpc, testAddresses[0]);
 
-                const rpc = getRPCClient(`http://127.0.0.1:${chainInfo.httpPort}`);
+                expect(balanceHttpRow, 'Balance row not found over http!').to.not.be.undefined;
+                assert.equal(balanceHttpRow.balance, addrBalance.balance, 'Internal get table rows doesnt match http api')
+            }
+        },
+        'simple raw evm tx': {
+            sequence: [1, 2, 3],
+            chainConfig: {
+                txs: {
+                    1: [new TelosEVMOpenWallet({account: 'alice', address: addressToChecksum160(testAddresses[0])})],
+                    2: [new AntelopeTransfer({from: 'alice', to: 'eosio.evm', quantity, memo: testAddresses[0].toString()})],
+                    3: [new TelosEVMRaw({
+                            ram_payer: 'alice',
+                            tx: buildEVMTx({
+                                senderKey: testPrivateKeys[0],
+                                txParams: {
+                                    nonce: 1,
+                                    gasPrice: BigInt(0),
+                                    gasLimit: BigInt(21000),
+                                    to: testAddresses[1],
+                                    value: assetQuantityToEvm(quantity),
+                                    data: '0x'
+                                }
+                            }),
+                            estimate_gas: false
+                    })]
+                }
+            },
+            testFn: async function (context: ControllerContext, chainInfo: NewChainInfo, runtime: ChainRuntime) {
+                const addr0Balance = getEVMBalanceForAddress(runtime, testAddresses[0]);
+                const addr1Balance = getEVMBalanceForAddress(runtime, testAddresses[1]);
 
-                const balanceHttpRows = (await rpc.get_table_rows({
-                    json: true,
-                    code: 'eosio.evm', table: 'account', scope: 'eosio.evm',
-                    key_type: 'sha256',
-                    index_position: 3,
-                    lower_bound: addressToSHA256(testDepositAddr).toString(),
-                    upper_bound: addressToSHA256(testDepositAddr).toString(),
-                    limit: 1
-                })).rows;
+                expect(addr0Balance, 'Balance row not found for address 0!').to.not.be.undefined;
+                expect(addr1Balance, 'Balance row not found for address 1!').to.not.be.undefined;
 
-                assert.equal(BigInt(balanceHttpRows[0].balance), addrBalance[0].balance, 'Internal get table rows doesnt match http api')
+                assert.equal(addr0Balance.balance, BigInt(0), 'Non zero balance for address 0!');
+                assert.equal(addr1Balance.balance, assetQuantityToEvm(quantity), 'Balance mismatch for secondary deposit addr!');
+
+                const rpc = context.controller.getRPC(chainInfo.chainId);
+                const balanceHttpRow = await getEVMBalanceForAddressHTTP(rpc, testAddresses[1]);
+                assert.equal(balanceHttpRow.balance, addr1Balance.balance, 'Internal get table rows doesnt match http api')
+            }
+        },
+        'simple evm withdraw': {
+            sequence: [1, 2, 3],
+            chainConfig: {
+                txs: {
+                    1: [new TelosEVMCreate({account: 'alice'})],
+                    2: [new AntelopeTransfer({from: 'alice', to: 'eosio.evm', quantity})],
+                    3: [new TelosEVMWithdraw({to: 'alice', quantity})]
+                }
+            },
+            testFn: async function (context: ControllerContext, chainInfo: NewChainInfo, runtime: ChainRuntime): Promise<void> {
+                const aliceEVMBalance = getEVMBalanceForAccount(runtime, 'alice');
+                const aliceBalance = getBalanceForAccount(runtime, 'alice');
+
+                expect(aliceEVMBalance, 'EVM Balance row not found for alice!').to.not.be.undefined;
+                expect(aliceBalance, 'Balance row not found for alice!').to.not.be.undefined;
+
+                assert.equal(aliceEVMBalance.balance, BigInt(0), 'Non zero balance for alice!');
+                expect(
+                    aliceBalance.balance.equals(quantity),
+                    'Balance mismatch for alice!'
+                ).to.be.true;
             }
         }
     }

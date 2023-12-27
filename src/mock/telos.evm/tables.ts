@@ -1,11 +1,26 @@
 import {Asset, Checksum160, Name, NameType, UInt64} from "@greymass/eosio";
 import {ActionMocker, ApplyContext, eosVMCheck} from "../abstract.js";
 import {Address} from "@ethereumjs/util";
-import {addressToChecksum160, addressTypeToSHA256, assetQuantityToEvm, uint8ArrayToBigInt} from "../../utils.js";
-import {TableRow} from "../../chainbase.js";
+import {
+    addressToChecksum160,
+    addressTypeToSHA256,
+    assetQuantityToEvm,
+    hexToUint8Array,
+    uint8ArrayToBigInt
+} from "../../utils.js";
+import {JsonSerializable, TableRow} from "../../chainbase.js";
 import {SELF} from "./constants.js";
 
 let evmPrimaryKey = 0;
+
+export class AccountRowJSON {
+    index: string | number;
+    address: string;
+    account: string;
+    code: string;
+    nonce: string | number;
+    balance: string;
+}
 
 export class AccountRow extends TableRow {
     index: UInt64;
@@ -44,7 +59,40 @@ export class AccountRow extends TableRow {
         return BigInt(row.account.value.toString());
     }
 
-    toJSON() {
+    static validateJSON(obj: any): obj is AccountRowJSON {
+        return (
+            obj &&
+            typeof obj === 'object' &&
+            'index' in obj &&
+            (typeof obj.index === 'string' || typeof obj.index === 'number') &&
+            'address' in obj &&
+            typeof obj.address === 'string' &&
+            'account' in obj &&
+            typeof obj.account === 'string' &&
+            'code' in obj &&
+            typeof obj.code === 'string' &&
+            'nonce' in obj &&
+            (typeof obj.nonce === 'string' || typeof obj.nonce === 'number') &&
+            'balance' in obj &&
+            typeof obj.balance === 'string'
+        );
+    }
+
+    static fromJSON(obj: JsonSerializable): AccountRow {
+        if (!AccountRow.validateJSON(obj))
+            throw new Error(`TableRow fromJSON validation error!`);
+
+        return new AccountRow({
+            index: UInt64.from(obj.index),
+            address: new Address(Checksum160.from(obj.address).array),
+            account: Name.from(obj.account),
+            code: hexToUint8Array(obj.code),
+            nonce: BigInt(obj.nonce),
+            balance: BigInt(obj.balance)
+        });
+    }
+
+    toJSON(): JsonSerializable {
         return {
             index: this.index.toString(),
             address: addressToChecksum160(this.address).toString(),
@@ -128,8 +176,8 @@ export abstract class TEVMMocker extends ActionMocker {
 
         const accountRow = this.getAccountByName(ctx, user);
 
-        eosVMCheck(accountRow.length != 1, 'account does not have a balance (sub_balance)..');
-        eosVMCheck(adjustedAmount >= BigInt(0), 'amount must not be negative');
+        eosVMCheck(accountRow.length == 1, 'account does not have a balance (sub_balance)..');
+        eosVMCheck(adjustedAmount > BigInt(0), 'amount must not be negative');
         eosVMCheck(accountRow[0].balance >= adjustedAmount, 'account balance too low')
 
         accountRow[0].balance -= adjustedAmount;

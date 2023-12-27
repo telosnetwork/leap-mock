@@ -19,6 +19,7 @@ export * from './descriptors.js';
 export * from './constants.js';
 export * from './mockers.js';
 export * from './tables.js';
+export * from './utils.js';
 
 export const mockingManifest: MockingManifest = {
     contracts: {

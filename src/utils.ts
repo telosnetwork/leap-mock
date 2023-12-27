@@ -88,10 +88,21 @@ import * as net from 'net';
 import path from "path";
 import {fileURLToPath} from "node:url";
 import {ActionDescriptor, ActionTrace} from "./types";
-import {ABI, Asset, Checksum160, Checksum256, Int64, Name, NameType, Serializer, UInt64} from "@greymass/eosio";
+import {
+    ABI,
+    Asset,
+    AssetType,
+    Checksum160,
+    Checksum256,
+    Int64,
+    Name,
+    NameType,
+    Serializer,
+    UInt64
+} from "@greymass/eosio";
 import * as crypto from "crypto";
 import {Address} from "@ethereumjs/util";
-import {AddressType} from "./action-mockers/telos.evm";
+import {AddressType} from "./mock/telos.evm";
 
 export function getRandomPort(): Promise<number> {
     return new Promise((resolve, reject) => {
@@ -203,7 +214,8 @@ export function uint8ArrayToBigInt(uint8Array: Uint8Array): bigint {
 
 const TOKEN_PRECISION = 4;
 const TOKEN_ADJUSTMENT = BigInt(10) ** BigInt(18 - TOKEN_PRECISION);
-export function assetQuantityToEvm(asset: Asset) {
+export function assetQuantityToEvm(asset: AssetType) {
+    asset = Asset.from(asset);
     return BigInt(asset.value) * TOKEN_ADJUSTMENT;
 }
 
@@ -225,4 +237,24 @@ export function addressToChecksum160(addr: Address) {
 
 export function nameToBigInt(n: NameType) {
     return BigInt(Name.from(n).value.toString());
+}
+
+export function hexToUint8Array(hexStr: string): Uint8Array {
+    if (hexStr.startsWith('0x'))
+        hexStr = hexStr.slice(2);
+
+    if (hexStr.length % 2 !== 0) {
+        throw new Error("Hex string must have an even number of characters");
+    }
+
+    const byteArray = new Uint8Array(hexStr.length / 2);
+
+    for (let i = 0, j = 0; i < hexStr.length; i += 2, j++) {
+        byteArray[j] = parseInt(hexStr.substring(i, i + 2), 16);
+        if (isNaN(byteArray[j])) {
+            throw new Error("Invalid character found in hex string");
+        }
+    }
+
+    return byteArray;
 }

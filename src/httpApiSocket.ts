@@ -123,4 +123,8 @@ export class HTTPAPISocket {
             });
         });
     }
+
+    getPort() {
+        return this.port;
+    }
 }

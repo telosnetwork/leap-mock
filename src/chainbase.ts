@@ -1,6 +1,6 @@
 import {ABI, Checksum256, Int64, Name, NameType, UInt64} from "@greymass/eosio";
 import {nameToBigInt, uint8ArrayToBigInt} from "./utils.js";
-import {eosVMCheck} from "./action-mockers/abstract.js";
+import {eosVMCheck} from "./mock/abstract.js";
 import {BufferedMap, MapLevel} from "./bufferedMap.js";
 
 
@@ -37,11 +37,27 @@ function keyTypeToValue(val: any, keyType: string) {
     throw new Error(`keyType to value for ${keyType} not implemented!`)
 }
 
+export type JsonSerializable = {
+    [key: string]: string | number | boolean | null | JsonSerializable | JsonSerializableArray;
+};
+
+export interface JsonSerializableArray extends Array<string | number | boolean | null | JsonSerializable | JsonSerializableArray> { }
+
 export abstract class TableRow {
     static primaryKey(row: TableRow): bigint {
         throw new Error('Called abstract primary key implementation...');
     }
-    abstract toJSON(): any;
+
+    static validateJSON(obj: any): any {
+        throw new Error('Called abstract validateJSON implementation...');
+    }
+
+    static fromJSON(obj: JsonSerializable): TableRow {
+        throw new Error('Called abstract fromJSON implementation...');
+    }
+
+    abstract toJSON(): JsonSerializable;
+
 }
 
 export type TableIndex = (row: TableRow) => bigint;
@@ -172,7 +188,7 @@ export class MockChainbase {
         );
         return rows.length == 1 ? rows[0] : undefined;
     }
-    getTableRowsAPI(opts: GetTableRowsOptions, jsonify: boolean = false): TableRow[] {
+    getTableRowsAPI(opts: GetTableRowsOptions, jsonify: boolean = false): TableRow[] | JsonSerializable[] {
         const abiTable = this.getContract(opts.code).abi.tables.find(
             t => Name.from(t.name).equals(opts.table));
 
@@ -203,8 +219,9 @@ export class MockChainbase {
             rows = this.getTableRows(opts.code, opts.table, opts.scope).slice(0, limit);
 
         if (jsonify) {
-            for (let i = 0; i < rows.length; i++)
-                rows[i] = rows[i].toJSON();
+            const jsonRows: JsonSerializable[] = [];
+            rows.forEach((row) => jsonRows.push(row.toJSON()));
+            return jsonRows;
         }
 
         return rows;

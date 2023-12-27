@@ -14,6 +14,14 @@ import fs from "fs";
 import {logger} from "./logging.js";
 import {ActionDescriptor} from "./types.js";
 
+import { JsonRpc } from 'eosjs';
+
+// @ts-ignore
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+
+export function getRPCClient(endpoint: string) {
+    return new JsonRpc(endpoint, { fetch });
+}
 
 export interface ChainDescriptor {
     shipPort?: number;
@@ -215,5 +223,9 @@ export class Controller {
         for (const chainId in this.chains)
             tasks.push(this.destroyChain(chainId));
         await Promise.all(tasks);
+    }
+
+    getRPC(chainId: string) {
+        return getRPCClient(`http://127.0.0.1:${this.getRuntime(chainId).network.httpSocket.getPort()}`)
     }
 }

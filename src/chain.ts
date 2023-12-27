@@ -10,7 +10,7 @@ import {ABI, Name, NameType, Serializer} from "@greymass/eosio";
 import {logger} from "./logging.js";
 import {ActionDescriptor, ActionTrace, TransactionTraceOptions} from "./types.js";
 
-import {ActionMocker, ApplyContext, EOSVMAssertionError, MockingManifest} from "./action-mockers/abstract.js";
+import {ActionMocker, ApplyContext, EOSVMAssertionError, MockingManifest} from "./mock/abstract.js";
 
 import path from "path";
 import {fileURLToPath} from "node:url";
@@ -104,7 +104,7 @@ export class MockChain {
 
     async initializeMockingModule(name: string) {
         const currentDir = path.dirname(fileURLToPath(import.meta.url));
-        const module = await import(path.join(currentDir, `./action-mockers/${name}/index.js`));
+        const module = await import(path.join(currentDir, `./mock/${name}/index.js`));
         const manifest: MockingManifest = module.mockingManifest;
         if (!manifest)
             throw new Error(`mocking module ${name} doesnt have a manifest`);

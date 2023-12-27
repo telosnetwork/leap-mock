@@ -6,6 +6,7 @@ import {TEVMTransaction} from "telos-evm-custom-ds";
 import {AccountRow, TEVMMocker} from "./tables.js";
 import {SELF, TOKEN_SYMBOL} from "./constants.js";
 import {AntelopeTransfer} from "../eosio.token/index.js";
+import {defaultCommon} from "./utils.js";
 
 
 export class TEVMTransferMocker extends TEVMMocker {
@@ -59,7 +60,7 @@ export class TEVMOpenWallet extends TEVMMocker {
 
 export class TEVMRawMocker extends TEVMMocker {
     handler(ctx: ApplyContext) {
-        const tx: TEVMTransaction = TEVMTransaction.fromSerializedTx(ctx.params.tx);
+        const tx: TEVMTransaction = TEVMTransaction.fromSerializedTx(ctx.params.tx.array, {common: defaultCommon});
         const maxGasCost = tx.gasPrice * tx.gasLimit;
 
         let callerRow: AccountRow;
@@ -80,7 +81,7 @@ export class TEVMRawMocker extends TEVMMocker {
 
         callerRow.nonce += BigInt(1);
         callerRow.balance -= maxGasCost + tx.value;
-        ctx.modify('accounts', 'eosio.evm', callerRow);
+        ctx.modify('account', 'eosio.evm', callerRow);
 
         if (tx.to) {
             const recipientRows = this.getAccountByAddress(ctx, tx.to);
@@ -91,7 +92,7 @@ export class TEVMRawMocker extends TEVMMocker {
                 recipientRow = recipientRows[0];
 
             recipientRow.balance += tx.value;
-            ctx.modify('accounts', 'eosio.evm', recipientRow);
+            ctx.modify('account', 'eosio.evm', recipientRow);
         }
 
         // TODO: smart contract calls

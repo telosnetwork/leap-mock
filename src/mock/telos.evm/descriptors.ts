@@ -2,6 +2,8 @@ import {SELF, TOKEN_CONTRACT} from "./constants.js";
 import {AntelopeTransfer} from "../eosio.token/descriptors.js";
 import {AssetType, Checksum160Type, NameType} from "@greymass/eosio";
 import {ActionDescriptor} from "../../types.js";
+import {TEVMTransaction} from "telos-evm-custom-ds";
+import {LegacyTransaction} from "@ethereumjs/tx";
 
 export class TelosEVMDeposit extends AntelopeTransfer {
     account: NameType = TOKEN_CONTRACT;
@@ -46,10 +48,13 @@ export class TelosEVMRaw implements ActionDescriptor {
 
     constructor(opts: {
         ram_payer: NameType,
-        tx: Uint8Array | string,
+        tx: Uint8Array | string | LegacyTransaction,
         estimate_gas: boolean,
         sender?: Checksum160Type
     }) {
+        if (opts.tx instanceof LegacyTransaction)
+            opts.tx = opts.tx.serialize();
+        // @ts-ignore
         this.parameters = opts;
     }
 }

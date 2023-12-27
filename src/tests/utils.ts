@@ -144,12 +144,3 @@ export function describeMockChainTests(
 
     });
 }
-
-import { JsonRpc } from 'eosjs';
-
-// @ts-ignore
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
-
-export function getRPCClient(endpoint: string) {
-    return new JsonRpc(endpoint, { fetch });
-}

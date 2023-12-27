@@ -78,11 +78,12 @@ export function eosVMCheck(condition: boolean, errorMessage: string) {
 }
 
 export function sendAction(ctx: ApplyContext, action: ActionDescriptor) {
+    const contractABI = ctx.db.getContract(action.account).abi;
     ctx.subActions.push(
         generateActionTrace(
             ctx.actionOrdinal,
             ctx.globalSequence,
-            ctx.contractABI,
+            contractABI,
             action
         )[1]
     );
