@@ -1,7 +1,7 @@
 import express, { Express, Request, Response } from 'express';
 import bodyParser from "body-parser";
 import {MockChain} from "./chain.js";
-import logger from "./logging.js";
+import {logger} from "./logging.js";
 
 export class HTTPAPISocket {
     private chain: MockChain;
@@ -78,6 +78,28 @@ export class HTTPAPISocket {
             res.json(this.chain.generateChainInfo());
         });
 
+
+        // Get table rows
+        this.expApp.get('/v1/chain/get_table_rows', (req: Request, res: Response) => {
+            const data = req.params;
+            res.json({
+                // @ts-ignore
+                rows: this.chain.getDB().getTableRowsAPI(data, true),
+                more: false,
+                next_key: ''
+            });
+        });
+
+        this.expApp.post('/v1/chain/get_table_rows', (req: Request, res: Response) => {
+            const data = req.body;
+            res.json({
+                rows: this.chain.getDB().getTableRowsAPI(data, true),
+                more: false,
+                next_key: ''
+            });
+        });
+
+
         this.server = this.expApp.listen(this.port, () => {
             this.log('debug', `serving /v1/chain for ${chainInfo.chain_id}`);
             this.isListening = true;
@@ -100,5 +122,9 @@ export class HTTPAPISocket {
                 this.isListening = false;
             });
         });
+    }
+
+    getPort() {
+        return this.port;
     }
 }

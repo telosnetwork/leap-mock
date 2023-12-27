@@ -11,8 +11,17 @@ import {
 import {ShipSocket} from "./shipSocket.js";
 import {HTTPAPISocket} from "./httpApiSocket.js";
 import fs from "fs";
-import logger from "./logging.js";
+import {logger} from "./logging.js";
+import {ActionDescriptor} from "./types.js";
 
+import { JsonRpc } from 'eosjs';
+
+// @ts-ignore
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+
+export function getRPCClient(endpoint: string) {
+    return new JsonRpc(endpoint, { fetch });
+}
 
 export interface ChainDescriptor {
     shipPort?: number;
@@ -29,6 +38,9 @@ export interface ChainDescriptor {
 
     blockGenStrat?: string;
     blocks?: string[][];
+
+    txs?: {[key: number]: ActionDescriptor[]};
+
     jumps?: [number, number][];
     pauses?: [number, number][];
 }
@@ -136,6 +148,9 @@ export class Controller {
             infoObj.asapMode
         );
 
+        await chain.initializeMockingModule('eosio.token');
+        await chain.initializeMockingModule('telos.evm');
+
         const rangeSize = desc.endBlock - desc.startBlock + 1;
         let jumpsSize = 0;
         if (desc.jumps) {
@@ -161,6 +176,9 @@ export class Controller {
 
         for(let i = 0; i < infoObj.blocks.length; i++)
             chain.setBlockHistory(infoObj.blocks[i], i);
+
+        if (desc.txs)
+            chain.setTransactions(desc.txs);
 
         const shipSocket = new ShipSocket(chain, infoObj.shipPort);
         const httpSocket = new HTTPAPISocket(chain, infoObj.httpPort);
@@ -205,5 +223,9 @@ export class Controller {
         for (const chainId in this.chains)
             tasks.push(this.destroyChain(chainId));
         await Promise.all(tasks);
+    }
+
+    getRPC(chainId: string) {
+        return getRPCClient(`http://127.0.0.1:${this.getRuntime(chainId).network.httpSocket.getPort()}`)
     }
 }

@@ -2,7 +2,8 @@ import {ChainDescriptor, NewChainInfo} from "../controller.js";
 import {HyperionSequentialReader} from "@eosrio/hyperion-sequential-reader";
 import {sleep, randomHash} from "../utils.js";
 import {assert} from "chai";
-import logging from "../logging.js";
+import {logger} from "../logging.js";
+import {loadAbi} from "../abis/utils.js";
 
 export function generateTestChainDescriptor(
     chainId?: string,
@@ -40,16 +41,22 @@ export async function expectSequence(
         blockConcurrency: 1,
         outputQueueLimit: 10,
         startBlock: 1,
-        logLevel: logging.level
+        logLevel: logger.level
     });
     reader.onDisconnect = async () => {
         if (!isExpectedSequence || reachedEnd)
             return;
 
-        logging.info(`reader disconnected, restarting in 3 seconds...`);
+        logger.info(`reader disconnected, restarting in 3 seconds...`);
         await sleep(3 * 1000);
         reader.restart();
     };
+
+    for (const [name, abiPath] of [
+        ['eosio.token', 'eosio.token'],
+        ['eosio.evm', 'telos.evm']
+    ])
+        reader.addContract(name, loadAbi(abiPath));
 
     let pushedLastUpdate = 0;
     let lastUpdateTime = new Date().getTime() / 1000;
@@ -77,4 +84,63 @@ export async function expectSequence(
 
     return assert.deepStrictEqual(
         receivedSequence, blockSequence, 'Received wrong sequence from ship');
+}
+
+import {ControllerContext} from "../controllerUtils.js";
+import {ControllerConfig, ChainRuntime} from "../controller.js";
+import {
+    getRandomPort,
+} from "../utils.js";
+import {describe} from "mocha";
+import {ActionDescriptor} from "../types";
+
+export function describeMockChainTests(
+    title: string,
+    tests: {
+        [key: string]: {
+            sequence: number[],
+            chainConfig: {
+                shipPort?: number,
+                httpPort?: number,
+                blocks?: string[][],
+                jumps?: [number, number][],
+                pauses?: [number, number][],
+                txs?: {[key: number]: ActionDescriptor[]}
+            },
+            testFn?: (ctx: ControllerContext, chainInfo: NewChainInfo, runtime: ChainRuntime) => Promise<void>
+        }
+    }
+) {
+    describe(title, async function() {
+        const config: ControllerConfig = {controlPort: await getRandomPort()};
+        const context = new ControllerContext(config);
+
+        before(async function ()  {
+            await context.bootstrap();
+        });
+        beforeEach(async function () {
+            await context.startTest(this.currentTest.title);
+        });
+        afterEach(async function () {
+            await context.endTest(this.currentTest.title);
+        });
+        after(async function () {
+            await context.teardown();
+        });
+
+        for (const testName in tests) {
+            const testInfo = tests[testName];
+            context.registerTestChain(testName, testInfo.chainConfig);
+            it(testName, async function() {
+                const chainInfo = context.getTestChain(testName);
+                await expectSequence(
+                    chainInfo,
+                    testInfo.sequence
+                );
+                if (testInfo.testFn)
+                    await testInfo.testFn(context, chainInfo, context.controller.getRuntime(chainInfo.chainId));
+            });
+        }
+
+    });
 }
