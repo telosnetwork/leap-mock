@@ -86,6 +86,65 @@ export async function expectSequence(
         receivedSequence, blockSequence, 'Received wrong sequence from ship');
 }
 
+import {ControllerContext} from "../controllerUtils.js";
+import {ControllerConfig, ChainRuntime} from "../controller.js";
+import {
+    getRandomPort,
+} from "../utils.js";
+import {describe} from "mocha";
+import {ActionDescriptor} from "../types";
+
+export function describeMockChainTests(
+    title: string,
+    tests: {
+        [key: string]: {
+            sequence: number[],
+            chainConfig: {
+                shipPort?: number,
+                httpPort?: number,
+                blocks?: string[][],
+                jumps?: [number, number][],
+                pauses?: [number, number][],
+                txs?: {[key: number]: ActionDescriptor[]}
+            },
+            testFn?: (ctx: ControllerContext, chainInfo: NewChainInfo, runtime: ChainRuntime) => Promise<void>
+        }
+    }
+) {
+    describe(title, async function() {
+        const config: ControllerConfig = {controlPort: await getRandomPort()};
+        const context = new ControllerContext(config);
+
+        before(async function ()  {
+            await context.bootstrap();
+        });
+        beforeEach(async function () {
+            await context.startTest(this.currentTest.title);
+        });
+        afterEach(async function () {
+            await context.endTest(this.currentTest.title);
+        });
+        after(async function () {
+            await context.teardown();
+        });
+
+        for (const testName in tests) {
+            const testInfo = tests[testName];
+            context.registerTestChain(testName, testInfo.chainConfig);
+            it(testName, async function() {
+                const chainInfo = context.getTestChain(testName);
+                await expectSequence(
+                    chainInfo,
+                    testInfo.sequence
+                );
+                if (testInfo.testFn)
+                    await testInfo.testFn(context, chainInfo, context.controller.getRuntime(chainInfo.chainId));
+            });
+        }
+
+    });
+}
+
 import { JsonRpc } from 'eosjs';
 
 // @ts-ignore

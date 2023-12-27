@@ -47,7 +47,6 @@ export class ControllerContext {
             blocks?: string[][],
             jumps?: [number, number][],
             pauses?: [number, number][],
-            contracts?: {[key: string]: ABI},
             txs?: {[key: number]: ActionDescriptor[]}
         }
     ) {
