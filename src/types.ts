@@ -1,19 +1,22 @@
+import {ABI, Name, NameType} from "@greymass/eosio";
+import {MockChainbase} from "./chainbase";
+
 export interface ActionReceipt {
-    receiver: string;
+    receiver: NameType;
     act_digest: string;
     global_sequence: number;
     recv_sequence: number;
-    auth_sequence: {account: string, sequence: number}[];
+    auth_sequence: {account: NameType, sequence: number}[];
     code_sequence: number;
     abi_sequence: number;
 }
 
 export interface ActionDescriptor {
-    account: string;
-    name: string;
+    account: NameType;
+    name: NameType;
     authorization?: {
-        actor: string;
-        permission: string
+        actor: NameType;
+        permission: NameType;
     }[];
     parameters: {[key: string]: any};
 }
@@ -22,13 +25,13 @@ export interface ActionTrace {
     action_ordinal: number;
     creator_action_ordinal: number;
     receipt: ['action_receipt_v0', ActionReceipt];
-    receiver: string;
+    receiver: NameType;
     act: {
-        account: string;
-        name: string;
+        account: NameType;
+        name: NameType;
         authorization: {
-            actor: string;
-            permission: string
+            actor: NameType;
+            permission: NameType;
         }[];
         data: string;
     };

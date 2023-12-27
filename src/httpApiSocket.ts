@@ -83,7 +83,8 @@ export class HTTPAPISocket {
         this.expApp.get('/v1/chain/get_table_rows', (req: Request, res: Response) => {
             const data = req.params;
             res.json({
-                rows: this.chain.getTableRows(data.code, data.table, data.scope),
+                // @ts-ignore
+                rows: this.chain.getDB().getTableRowsAPI(data, true),
                 more: false,
                 next_key: ''
             });
@@ -92,7 +93,7 @@ export class HTTPAPISocket {
         this.expApp.post('/v1/chain/get_table_rows', (req: Request, res: Response) => {
             const data = req.body;
             res.json({
-                rows: this.chain.getTableRows(data.code, data.table, data.scope),
+                rows: this.chain.getDB().getTableRowsAPI(data, true),
                 more: false,
                 next_key: ''
             });

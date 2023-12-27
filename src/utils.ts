@@ -1,41 +1,53 @@
+/**
+ * Simple object check.
+ * https://stackoverflow.com/questions/27936772/how-to-deep-merge-instead-of-shallow-merge
+ * @param item
+ * @returns {boolean}
+ */
+function isObject(item) {
+    return (item && typeof item === 'object' && !Array.isArray(item));
+}
+
+/**
+ * Deep merge two objects.
+ * @param target
+ * @param ...sources
+ */
+export function mergeDeep(target, ...sources) {
+    if (!sources.length) return target;
+    const source = sources.shift();
+
+    if (isObject(target) && isObject(source)) {
+        for (const key in source) {
+            if (isObject(source[key])) {
+                if (!target[key]) Object.assign(target, { [key]: {} });
+                mergeDeep(target[key], source[key]);
+            } else {
+                Object.assign(target, { [key]: source[key] });
+            }
+        }
+    }
+
+    return mergeDeep(target, ...sources);
+}
+
 import fs from 'fs';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
-function loadAbi() {
-    const filePath = path.join(currentDir, './shipAbi.json');
+export function readRelativeFile(relativePath: string) {
+    const filePath = path.join(currentDir, relativePath);
     return fs.readFileSync(filePath, 'utf-8');
 };
 
-function removeLastSuffix(fileName: string): string {
-    const lastDotIndex = fileName.lastIndexOf('.');
-    if (lastDotIndex === -1) {
-        return fileName; // No dot found, return the original string
-    }
-    return fileName.substring(0, lastDotIndex);
-}
-
-function loadDefaultContracts(): {[key: string]: ABI} {
-    const contracts = {};
-
-    const files = fs.readdirSync('./abis');
-
-    for (const fileName of files) {
-        const filePath = path.join('./abis', fileName);
-        const fileContents = fs.readFileSync(filePath, 'utf8');
-
-        contracts[removeLastSuffix(fileName)] = JSON.parse(fileContents) as ABI;
-    }
-
-    return contracts;
-}
-
-export const DEFAULT_CONTRACTS = loadDefaultContracts();
-
-export const DEFAULT_ABI_STRING = loadAbi();
+export const DEFAULT_ABI_STRING = readRelativeFile('shipAbi.json');
 export const DEFAULT_ABI = JSON.parse(DEFAULT_ABI_STRING);
 
 export function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+export function randomByteArray(size: number): Uint8Array {
+    return crypto.randomBytes(size);
 }
 
 export function randomHex(size: number): string {
@@ -76,8 +88,10 @@ import * as net from 'net';
 import path from "path";
 import {fileURLToPath} from "node:url";
 import {ActionDescriptor, ActionTrace} from "./types";
-import {ABI, Serializer} from "@greymass/eosio";
-import {logger} from "./logging";
+import {ABI, Asset, Checksum160, Checksum256, Int64, Name, NameType, Serializer, UInt64} from "@greymass/eosio";
+import * as crypto from "crypto";
+import {Address} from "@ethereumjs/util";
+import {AddressType} from "./action-mockers/telos.evm";
 
 export function getRandomPort(): Promise<number> {
     return new Promise((resolve, reject) => {
@@ -135,6 +149,11 @@ export function generateActionTrace(
     contractAbi: ABI,
     actionDesc: ActionDescriptor
 ): ['action_trace_v1', ActionTrace] {
+    let stringName;
+    if (typeof actionDesc.name === 'string')
+        stringName = actionDesc.name;
+    else
+        stringName = actionDesc.name.toString();
     return ['action_trace_v1', {
         action_ordinal: actionOrdinal,
         creator_action_ordinal: 0,
@@ -155,7 +174,7 @@ export function generateActionTrace(
                 actor: actionDesc.account,
                 permission: 'active'
             }],
-            data: Serializer.encode({type: actionDesc.name, abi: contractAbi, object: actionDesc.parameters}).hexString
+            data: Serializer.encode({type: stringName, abi: contractAbi, object: actionDesc.parameters}).hexString
         },
         context_free: false,
         elapsed: randomInt(16, 60),
@@ -167,25 +186,43 @@ export function generateActionTrace(
     }];
 }
 
-export class AntelopeTransfer {
+export function uint8ArrayToBigInt(uint8Array: Uint8Array): bigint {
+    let result = BigInt(0);
 
-    account: string = 'eosio.token';
-    name: string = 'transfer';
-    parameters: {
-        from: string;
-        to: string;
-        quantity: string;
-        memo: string;
-    };
+    // Iterate over each byte and shift it into the correct position
+    uint8Array.forEach((byte, index) => {
+        // BigInt is necessary to handle the large integers correctly
+        const bigByte = BigInt(byte);
 
-    constructor(opts: {
-        from: string, to: string, quantity: string,
-        memo?: string
-    }) {
-        this.parameters = {
-            ...opts,
-            memo: opts.memo ? opts.memo : ''
-        };
-    }
+        // Shift the current byte to its correct position and add it to the result
+        result += bigByte << (BigInt(8) * BigInt(uint8Array.length - index - 1));
+    });
 
+    return result;
+}
+
+const TOKEN_PRECISION = 4;
+const TOKEN_ADJUSTMENT = BigInt(10) ** BigInt(18 - TOKEN_PRECISION);
+export function assetQuantityToEvm(asset: Asset) {
+    return BigInt(asset.value) * TOKEN_ADJUSTMENT;
+}
+
+export function addressToSHA256(addr: Address) {
+    const rawAddr = addr.toString().substring(2)
+    return Checksum256.from('0'.repeat(12 * 2) + rawAddr);
+}
+
+export function addressTypeToSHA256(addr: AddressType) {
+    if (addr instanceof Checksum160)
+        addr = new Address(addr.array);
+    return addressToSHA256(addr);
+}
+
+export function addressToChecksum160(addr: Address) {
+    const rawAddr = addr.toString().substring(2)
+    return Checksum160.from(rawAddr);
+}
+
+export function nameToBigInt(n: NameType) {
+    return BigInt(Name.from(n).value.toString());
 }

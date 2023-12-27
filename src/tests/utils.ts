@@ -1,8 +1,9 @@
 import {ChainDescriptor, NewChainInfo} from "../controller.js";
 import {HyperionSequentialReader} from "@eosrio/hyperion-sequential-reader";
-import {sleep, randomHash, DEFAULT_CONTRACTS} from "../utils.js";
+import {sleep, randomHash} from "../utils.js";
 import {assert} from "chai";
 import {logger} from "../logging.js";
+import {loadAbi} from "../abis/utils.js";
 
 export function generateTestChainDescriptor(
     chainId?: string,
@@ -51,8 +52,11 @@ export async function expectSequence(
         reader.restart();
     };
 
-    for (const name in DEFAULT_CONTRACTS)
-        reader.addContract(name, DEFAULT_CONTRACTS[name]);
+    for (const [name, abiPath] of [
+        ['eosio.token', 'eosio.token'],
+        ['eosio.evm', 'telos.evm']
+    ])
+        reader.addContract(name, loadAbi(abiPath));
 
     let pushedLastUpdate = 0;
     let lastUpdateTime = new Date().getTime() / 1000;

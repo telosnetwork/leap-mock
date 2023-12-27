@@ -1,8 +1,20 @@
-import {addSecondsToDate, generateActionTrace, getNextBlockTime, randomHash, randomInt, sleep} from "./utils.js";
-import {ABI, Asset, Int64, Serializer} from "@greymass/eosio";
+import {
+    addSecondsToDate,
+    generateActionTrace,
+    getNextBlockTime, nameToBigInt,
+    randomHash,
+    randomInt,
+    sleep,
+} from "./utils.js";
+import {ABI, Name, NameType, Serializer} from "@greymass/eosio";
 import {logger} from "./logging.js";
-import {ActionDescriptor, ActionTrace, TransactionTraceOptions} from "./types";
+import {ActionDescriptor, ActionTrace, TransactionTraceOptions} from "./types.js";
 
+import {ActionMocker, ApplyContext, EOSVMAssertionError, MockingManifest} from "./action-mockers/abstract.js";
+
+import path from "path";
+import {fileURLToPath} from "node:url";
+import {MockChainbase, TableIndex} from "./chainbase.js";
 
 const libOffset = 333;
 const ZERO_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
@@ -15,11 +27,6 @@ interface ShipSession {
     startBlock: number,
     currentBlock: number,
     reachedHead: boolean
-};
-
-interface ApplyContext {
-    contractTables: any;
-    params: any;
 }
 
 export class MockChain {
@@ -32,14 +39,8 @@ export class MockChain {
     private startTime: string;
     private blockHistory: string[][];
     private transactions: {[key: number]: TransactionTraceOptions[]};
-    private contracts: {[key: string]: ABI};
 
-    private tokenSymbol: Asset.Symbol;
-    private db = {
-        'eosio.token': {
-            'accounts': {}
-        }
-    };
+    private db = new MockChainbase();
 
     private jumps: [number, number][];
     private jumpIndex: number;
@@ -55,11 +56,14 @@ export class MockChain {
         block_id: ZERO_HASH,
         block_num: 0
     };
-    private txAppliers: {[key: string]: (ctx: ApplyContext) => void } = {};
+    private actionMockers: {[key: string]: ActionMocker[]} = {};
 
     private jumpedLastBlock: boolean = false;
     private shouldProduce: boolean;
     private producerTaskRunning: boolean;
+
+    private globalSequence: number = 0;
+    private actionOrdinal: number;
 
     private pauseHandler: (time: number) => Promise<void>;
 
@@ -70,8 +74,7 @@ export class MockChain {
         endBlock: number,
         shipAbi: ABI,
         pauseHandler: (time: number) => Promise<void>,
-        asapMode: boolean = false,
-        tokenSymbol: Asset.Symbol
+        asapMode: boolean = false
     ) {
         this.chainId = chainId;
         this.startTime = startTime;
@@ -93,19 +96,35 @@ export class MockChain {
         this.blockHistory = [];
 
         this.asapMode = asapMode;
-        this.tokenSymbol = tokenSymbol;
+    }
 
-        this.txAppliers['eosio.token::transfer'] = (ctx: ApplyContext) => {
-            if (!(ctx.params.to in ctx.contractTables.accounts)) {
-                ctx.contractTables.accounts[ctx.params.to] = [{
-                    balance: Asset.fromFloat(0, this.tokenSymbol)
-                }];
-            }
+    getDB() {
+        return this.db;
+    }
 
-            const row = ctx.contractTables.accounts[ctx.params.to][0];
-            const newBalance: number = row.balance.value + ctx.params.quantity.value;
-            ctx.contractTables.accounts[ctx.params.to] = [{balance: Asset.fromFloat(newBalance, this.tokenSymbol)}];
-        };
+    async initializeMockingModule(name: string) {
+        const currentDir = path.dirname(fileURLToPath(import.meta.url));
+        const module = await import(path.join(currentDir, `./action-mockers/${name}/index.js`));
+        const manifest: MockingManifest = module.mockingManifest;
+        if (!manifest)
+            throw new Error(`mocking module ${name} doesnt have a manifest`);
+
+        for (const contractName in manifest.contracts) {
+            const contract = manifest.contracts[contractName];
+            const indexes = new Map<bigint, TableIndex[]>();
+            for (const tableName in contract.tableMappings)
+                indexes.set(nameToBigInt(tableName), contract.tableMappings[tableName]);
+
+            this.db.setContract(contractName, {abi: contract.abi, indexes});
+        }
+
+        manifest.actions.forEach(mocker => {
+            const actionKey = `${mocker.code}::${mocker.action}`;
+            if (!(actionKey in this.actionMockers))
+                this.actionMockers[actionKey] = [];
+
+            this.actionMockers[actionKey].push(mocker);
+        });
     }
 
     log(level: string, message: string) {
@@ -136,10 +155,6 @@ export class MockChain {
         this.log('info', `set blocks array of size ${blocks.length} index ${index}`)
     }
 
-    setContracts(contracts: {[key: string]: ABI}) {
-        this.contracts = contracts;
-    }
-
     setTransactions(actions: {[key: number]: ActionDescriptor[]}) {
         let globalSequence = 0;
         for (const blockNum in actions) {
@@ -150,7 +165,7 @@ export class MockChain {
                 generatedActions.push(
                     generateActionTrace(
                         actionOrdinal, globalSequence,
-                        this.contracts[action.account],
+                        this.db.getContract(action.account).abi,
                         action
                     )
                 );
@@ -159,23 +174,6 @@ export class MockChain {
             this.transactions[blockNum].push({action_traces: generatedActions});
             globalSequence++;
         }
-    }
-
-    getTableRows(code: string, table: string, scope: string) {
-        if (!(code in this.contracts))
-            throw new Error(`Fail to retrieve account for ${code}`);
-
-        const abiTable = this.contracts[code].tables.find(t => t.name == table);
-        if (!abiTable)
-            throw new Error(`Table ${table} is not specified in the ABI`);
-
-        let rows = [];
-
-        if (table in this.db[code])
-            if (scope in this.db[code][table])
-                rows = this.db[code][table][scope];
-
-        return rows;
     }
 
     getBlockHash(blockNum: number, prev: boolean = false): string {
@@ -391,6 +389,52 @@ export class MockChain {
         };
     }
 
+    private getContext(contract: NameType, contractABI: ABI, params: any) {
+        return new ApplyContext(
+            this.globalSequence,
+            this.actionOrdinal,
+            this.db,
+            contractABI,
+            Name.from(contract),
+            params
+        );
+    }
+
+    applyTrace(trace: ActionTrace) {
+        const contract = trace.act.account;
+        const contractABI = this.db.getContract(contract).abi;
+        const actionName = Name.from(trace.act.name).toString();
+
+        const params = Serializer.decode({
+            data: trace.act.data,
+            type: actionName,
+            abi: contractABI,
+            ignoreInvalidUTF8: true
+        });
+
+        const mockerName = `${contract}::${actionName}`;
+        const mockers = this.actionMockers[mockerName];
+
+        if (mockers.length > 0) {
+            const ctx = this.getContext(contract, contractABI, params);
+
+            // apply root trace
+            for(const mocker of mockers) {
+                mocker.handler(ctx);
+                this.db.commit();
+            }
+
+            this.actionOrdinal++;
+            this.globalSequence++;
+
+            // recursion to process all subActions
+            for(const trace of ctx.subActions)
+                this.applyTrace(trace)
+
+        } else
+            throw new Error(`Action handler not found for ${mockerName}`);
+    }
+
     async produceBlock() {
         if (this.pauseIndex < this.pauses.length) {
             const [pauseBlock, pauseTime] = this.pauses[this.pauseIndex];
@@ -404,27 +448,17 @@ export class MockChain {
         if (this.headBlockNum in this.transactions) {
             const txs = this.transactions[this.headBlockNum];
             for (const tx of txs) {
+                this.actionOrdinal = 0;
                 for (const [_, actionTrace] of tx.action_traces) {
-                    const contract = actionTrace.act.account;
-
-                    if (!(contract in this.contracts))
-                        continue;
-
-                    const contractABI = this.contracts[contract];
-                    const contractTables = this.db[contract];
-                    const actionName = actionTrace.act.name;
-
-                    const params = Serializer.decode({
-                        data: actionTrace.act.data,
-                        type: actionTrace.act.name,
-                        abi: contractABI,
-                        ignoreInvalidUTF8: true
-                    });
-
-                    const applyHandlerName = `${contract}::${actionName}`;
-
-                    if (applyHandlerName in this.txAppliers)
-                        this.txAppliers[applyHandlerName]({contractTables, params});
+                    try {
+                        this.applyTrace(actionTrace)
+                    } catch (e) {
+                        if (e instanceof EOSVMAssertionError) {
+                            this.db.revert();
+                            this.log('error', e.message);
+                        } else
+                            throw e;
+                    }
                 }
             }
         }
