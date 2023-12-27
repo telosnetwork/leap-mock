@@ -81,7 +81,7 @@ export class TEVMRawMocker extends TEVMMocker {
 
         callerRow.nonce += BigInt(1);
         callerRow.balance -= maxGasCost + tx.value;
-        ctx.modify('account', 'eosio.evm', callerRow);
+        ctx.modify('account', SELF, callerRow);
 
         if (tx.to) {
             const recipientRows = this.getAccountByAddress(ctx, tx.to);
@@ -92,7 +92,7 @@ export class TEVMRawMocker extends TEVMMocker {
                 recipientRow = recipientRows[0];
 
             recipientRow.balance += tx.value;
-            ctx.modify('account', 'eosio.evm', recipientRow);
+            ctx.modify('account', SELF, recipientRow);
         }
 
         // TODO: smart contract calls
