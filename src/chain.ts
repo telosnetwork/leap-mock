@@ -104,7 +104,7 @@ export class MockChain {
 
     async initializeMockingModule(name: string) {
         const currentDir = path.dirname(fileURLToPath(import.meta.url));
-        const module = await import(path.join(currentDir, `./mock/${name}/index.js`));
+        const module = await import(path.join(currentDir, `./mock/${name}/manifest.js`));
         const manifest: MockingManifest = module.mockingManifest;
         if (!manifest)
             throw new Error(`mocking module ${name} doesnt have a manifest`);
