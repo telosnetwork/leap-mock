@@ -38,7 +38,9 @@ export class MockChain {
     private chainId: string;
     private startTime: string;
     private blockHistory: string[][];
+
     private transactions: {[key: number]: TransactionTraceOptions[]};
+    private generatedTraces: {[key: number]: ActionTrace[]} = {};
 
     private db = new MockChainbase();
 
@@ -56,7 +58,7 @@ export class MockChain {
         block_id: ZERO_HASH,
         block_num: 0
     };
-    private actionMockers: {[key: string]: ActionMocker[]} = {};
+    private actionMockers: {[key: string]: [NameType, ActionMocker][]} = {};
 
     private jumpedLastBlock: boolean = false;
     private shouldProduce: boolean;
@@ -105,6 +107,7 @@ export class MockChain {
     async initializeMockingModule(name: string) {
         const currentDir = path.dirname(fileURLToPath(import.meta.url));
         const module = await import(path.join(currentDir, `./mock/${name}/manifest.js`));
+        const moduleConstants = await import(path.join(currentDir, `./mock/${name}/constants.js`));
         const manifest: MockingManifest = module.mockingManifest;
         if (!manifest)
             throw new Error(`mocking module ${name} doesnt have a manifest`);
@@ -123,7 +126,7 @@ export class MockChain {
             if (!(actionKey in this.actionMockers))
                 this.actionMockers[actionKey] = [];
 
-            this.actionMockers[actionKey].push(mocker);
+            this.actionMockers[actionKey].push([moduleConstants.SELF, mocker]);
         });
     }
 
@@ -166,6 +169,7 @@ export class MockChain {
                     generateActionTrace(
                         actionOrdinal, globalSequence,
                         this.db.getContract(action.account).abi,
+                        action.account,
                         action
                     )
                 );
@@ -210,6 +214,12 @@ export class MockChain {
         const traces = [];
         if (blockNum in this.transactions) {
             for (const txDesc of this.transactions[blockNum]) {
+
+                const actionTraces = [];
+                if (blockNum in this.generatedTraces)
+                    this.generatedTraces[blockNum].forEach(
+                        trace => actionTraces.push(['action_trace_v1', trace]));
+
                 traces.push(['transaction_trace_v0', {
                     id: txDesc.id ? txDesc.id : randomHash(),
                     status: txDesc.status ? txDesc.status : 0,
@@ -218,7 +228,7 @@ export class MockChain {
                     elapsed: txDesc.elapsed ? txDesc.elapsed : 0,
                     net_usage: txDesc.net_usage ? txDesc.net_usage : 0,
                     scheduled: txDesc.scheduled ? txDesc.scheduled : false,
-                    action_traces: txDesc.action_traces,
+                    action_traces: actionTraces,
                     partial: txDesc.partial ? txDesc.partial : ['partial_transaction_v0', {
                         expiration: addSecondsToDate(this.getBlockTimestamp(blockNum), randomInt(20, 30)).toISOString().substring(0, 19),
                         ref_block_num: 1,
@@ -389,15 +399,23 @@ export class MockChain {
         };
     }
 
-    private getContext(contract: NameType, contractABI: ABI, params: any) {
+    private getContext(receiver: NameType, contract: NameType, name: NameType, contractABI: ABI, params: any) {
         return new ApplyContext(
             this.globalSequence,
             this.actionOrdinal,
             this.db,
             contractABI,
             Name.from(contract),
+            Name.from(name),
+            Name.from(receiver),
             params
         );
+    }
+
+    private addExtraTrace(trace: ActionTrace) {
+        if (!(this.headBlockNum in this.generatedTraces))
+            this.generatedTraces[this.headBlockNum] = [];
+        this.generatedTraces[this.headBlockNum].push(trace)
     }
 
     applyTrace(trace: ActionTrace) {
@@ -416,21 +434,24 @@ export class MockChain {
         const mockers = this.actionMockers[mockerName];
 
         if (mockers.length > 0) {
-            const ctx = this.getContext(contract, contractABI, params);
-
             // apply root trace
-            for(const mocker of mockers) {
+            for(const [receiver, mocker] of mockers) {
+                const ctx = this.getContext(
+                    receiver, contract, actionName, contractABI, params);
+
                 mocker.handler(ctx);
+                // if (Name.from(receiver).equals(contract))
+                this.addExtraTrace(ctx.getTrace());
+
                 this.db.commit();
+
+                this.actionOrdinal++;
+                this.globalSequence++;
+
+                // recursion to process all subActions
+                for(const trace of ctx.subActions)
+                    this.applyTrace(trace);
             }
-
-            this.actionOrdinal++;
-            this.globalSequence++;
-
-            // recursion to process all subActions
-            for(const trace of ctx.subActions)
-                this.applyTrace(trace)
-
         } else
             throw new Error(`Action handler not found for ${mockerName}`);
     }
@@ -451,7 +472,7 @@ export class MockChain {
                 this.actionOrdinal = 0;
                 for (const [_, actionTrace] of tx.action_traces) {
                     try {
-                        this.applyTrace(actionTrace)
+                        this.applyTrace(actionTrace);
                     } catch (e) {
                         if (e instanceof EOSVMAssertionError) {
                             this.db.revert();

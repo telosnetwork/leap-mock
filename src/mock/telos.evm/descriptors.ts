@@ -5,10 +5,6 @@ import {ActionDescriptor} from "../../types.js";
 import {TEVMTransaction} from "telos-evm-custom-ds";
 import {LegacyTransaction} from "@ethereumjs/tx";
 
-export class TelosEVMDeposit extends AntelopeTransfer {
-    account: NameType = TOKEN_CONTRACT;
-    name: NameType = 'transfer';
-}
 
 export class TelosEVMCreate implements ActionDescriptor {
     account: NameType = SELF;

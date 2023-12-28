@@ -158,6 +158,7 @@ export function generateActionTrace(
     actionOrdinal: number,
     globalSequence: number,
     contractAbi: ABI,
+    receiver: NameType,
     actionDesc: ActionDescriptor
 ): ['action_trace_v1', ActionTrace] {
     let stringName;
@@ -169,7 +170,7 @@ export function generateActionTrace(
         action_ordinal: actionOrdinal,
         creator_action_ordinal: 0,
         receipt: ['action_receipt_v0', {
-            receiver: actionDesc.account,
+            receiver: receiver,
             act_digest: randomHash(),
             global_sequence: globalSequence,
             recv_sequence: 1,
@@ -177,7 +178,7 @@ export function generateActionTrace(
             code_sequence: 0,
             abi_sequence: 0
         }],
-        receiver: actionDesc.account,
+        receiver: receiver,
         act: {
             account: actionDesc.account,
             name: actionDesc.name,

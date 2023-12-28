@@ -14,6 +14,7 @@ import {
 import {addressToChecksum160, assetQuantityToEvm, randomByteArray} from "../utils.js";
 import {Address} from "@ethereumjs/util";
 import {getBalanceForAccount, getBalanceForAccountHTTP} from "../mock/eosio.token/utils.js";
+import {Name, Serializer} from "@greymass/eosio";
 
 const quantity = '420.0000 TLOS'
 
@@ -185,6 +186,21 @@ describeMockChainTests(
                     aliceBalance.balance.equals(quantity),
                     'Balance mismatch for alice!'
                 ).to.be.true;
+
+                // assert subaction produces correct trace
+                const block = runtime.chain.generateHeadBlockResponse(3);
+                const traces = Serializer.decode({
+                    data: block.traces,
+                    type: 'transaction_trace[]',
+                    abi: runtime.chain.shipAbi
+                })[0][1];
+
+                // console.log(JSON.stringify(traces, null, 4));
+
+                expect(traces.action_traces.length).to.be.eq(3);
+                expect(traces.action_traces[0][1].receiver.toString()).to.be.eq('eosio.evm');
+                expect(traces.action_traces[1][1].receiver.toString()).to.be.eq('eosio.token');
+                expect(traces.action_traces[2][1].receiver.toString()).to.be.eq('eosio.evm');
             }
         }
     }

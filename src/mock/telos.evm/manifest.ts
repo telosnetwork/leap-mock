@@ -22,8 +22,8 @@ export const mockingManifest: MockingManifest = {
             tableMappings: {
                 account: [
                     AccountRow.primaryKey,
+                    AccountRow.byAddress,
                     AccountRow.byAccount,
-                    AccountRow.byAddress
                 ]
             }
         },

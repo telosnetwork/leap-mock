@@ -1,4 +1,4 @@
-import {ApplyContext, eosVMCheck, sendAction} from "../abstract.js";
+import {ApplyContext, eosVMCheck} from "../abstract.js";
 import {Checksum160} from "@greymass/eosio";
 import {Address} from "@ethereumjs/util";
 import {randomByteArray} from "../../utils.js";
@@ -103,8 +103,7 @@ export class TEVMWithdrawMocker extends TEVMMocker {
     handler(ctx: ApplyContext) {
         this.subBalance(ctx, ctx.params.to, ctx.params.quantity);
 
-        sendAction(
-            ctx,
+        ctx.sendAction(
             new AntelopeTransfer({
                 from: this.code.toString(),
                 to: ctx.params.to,

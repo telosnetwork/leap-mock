@@ -116,7 +116,7 @@ export abstract class TEVMMocker extends ActionMocker {
         const key = Name.from(name).value.toString();
         return ctx.db.find(
             SELF, 'account', 'eosio.evm',
-            2, 'i64',
+            3, 'i64',
             key, key,
             1
         ) as AccountRow[];
@@ -126,7 +126,7 @@ export abstract class TEVMMocker extends ActionMocker {
         const addr256 = addressTypeToSHA256(addr).toString();
         return ctx.db.find(
             SELF, 'account', 'eosio.evm',
-            3, 'sha256',
+            2, 'sha256',
             addr256, addr256,
             1
         ) as AccountRow[];

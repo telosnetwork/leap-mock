@@ -86,7 +86,7 @@ export function getEVMBalanceForAccount(runtime: ChainRuntime, account: NameType
     const rows = runtime.chain.getDB().getTableRowsAPI({
         code: SELF, table: 'account', scope: SELF,
         key_type: 'i64',
-        index_position: 2,
+        index_position: 3,
         lower_bound: Name.from(account).value.toString(),
         upper_bound: Name.from(account).value.toString(),
         limit: 1
@@ -103,7 +103,7 @@ export async function getEVMBalanceForAccountHTTP(rpc: JsonRpc, account: NameTyp
         json: true,
         code: SELF.toString(), table: 'account', scope: SELF.toString(),
         key_type: 'i64',
-        index_position: 2,
+        index_position: 3,
         lower_bound: Name.from(account).value.toString(),
         upper_bound: Name.from(account).value.toString(),
         limit: 1
@@ -119,7 +119,7 @@ export function getEVMBalanceForAddress(runtime: ChainRuntime, addr: Address): A
     const rows = runtime.chain.getDB().getTableRowsAPI({
         code: SELF, table: 'account', scope: SELF,
         key_type: 'sha256',
-        index_position: 3,
+        index_position: 2,
         lower_bound: addressToSHA256(addr).toString(),
         upper_bound: addressToSHA256(addr).toString(),
         limit: 1
@@ -136,7 +136,7 @@ export async function getEVMBalanceForAddressHTTP(rpc: JsonRpc, addr: Address): 
         json: true,
         code: SELF, table: 'account', scope: SELF,
         key_type: 'sha256',
-        index_position: 3,
+        index_position: 2,
         lower_bound: addressToSHA256(addr).toString(),
         upper_bound: addressToSHA256(addr).toString(),
         limit: 1

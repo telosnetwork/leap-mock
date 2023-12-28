@@ -19,7 +19,9 @@ export class ApplyContext {
     actionOrdinal: number;
     db: MockChainbase;
     contractABI: ABI;
-    contractAccount: Name;
+    contractAccount: Name; // contract source code
+    actionName: Name;
+    receiver: Name;  // contract thats reacting to the action
     params: any;
     console: string;
     subActions: ActionTrace[];
@@ -30,6 +32,8 @@ export class ApplyContext {
         db: MockChainbase,
         contractABI: ABI,
         contractAccount: Name,
+        actionName: Name,
+        receiver: Name,
         params: any
     ) {
         this.globalSequence = globalSequence;
@@ -37,6 +41,8 @@ export class ApplyContext {
         this.db = db;
         this.contractABI = contractABI;
         this.contractAccount = contractAccount;
+        this.actionName = actionName;
+        this.receiver = receiver;
         this.params = params;
         this.console = '';
         this.subActions = [];
@@ -69,6 +75,33 @@ export class ApplyContext {
     findByPrimaryKey(table: NameType, scope: NameType, key: bigint): TableRow | undefined {
         return this.db.findByPrimaryKey([this.contractAccount, table, scope], key);
     }
+
+    getTrace() {
+        return generateActionTrace(
+            this.actionOrdinal,
+            this.globalSequence,
+            this.contractABI,
+            this.receiver,
+            {
+                account: this.contractAccount,
+                name: this.actionName,
+                parameters: this.params
+            }
+        )[1];
+    }
+
+    sendAction(action: ActionDescriptor) {
+        const contractABI = this.db.getContract(action.account).abi;
+        this.subActions.push(
+            generateActionTrace(
+                this.actionOrdinal + this.subActions.length,
+                this.globalSequence + this.subActions.length,
+                contractABI,
+                this.receiver,
+                action
+            )[1]
+        );
+    }
 }
 export class EOSVMAssertionError extends Error {}
 
@@ -76,19 +109,6 @@ export function eosVMCheck(condition: boolean, errorMessage: string) {
     if (!condition)
         throw new EOSVMAssertionError(errorMessage);
 }
-
-export function sendAction(ctx: ApplyContext, action: ActionDescriptor) {
-    const contractABI = ctx.db.getContract(action.account).abi;
-    ctx.subActions.push(
-        generateActionTrace(
-            ctx.actionOrdinal,
-            ctx.globalSequence,
-            contractABI,
-            action
-        )[1]
-    );
-}
-
 
 export abstract class ActionMocker {
     code: Name;
