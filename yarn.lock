@@ -23,9 +23,10 @@
     enabled "2.0.x"
     kuler "^2.0.0"
 
-"@eosrio/hyperion-sequential-reader@https://github.com/eosrio/hyperion-sequential-reader.git#hist_buf_size":
+"@eosrio/hyperion-sequential-reader@1.2.5":
   version "1.2.5"
-  resolved "https://github.com/eosrio/hyperion-sequential-reader.git#8573e0db7790d66279f640ee41bdbb442cb26236"
+  resolved "https://registry.yarnpkg.com/@eosrio/hyperion-sequential-reader/-/hyperion-sequential-reader-1.2.5.tgz#71f75fe042eac8b9714e730d68e6c33e3f2ef742"
+  integrity sha512-PlV6v0LecKRHr/TpvnMMhD3jXTztVfOXnQtYQlwCUsIuwVg6zCKeTNluXYXBsnHMBTzWM2fkZGHf07LjBJ3CbA==
   dependencies:
     "@greymass/eosio" "0.6.11"
     async "^3.2.4"

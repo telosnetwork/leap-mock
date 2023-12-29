@@ -1,7 +1,7 @@
 {
   "name": "leap-mock",
   "repository": "git+https://github.com/guilledk/leap-mock.git",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "AntelopeIO/leap mocker for advanced indexer testing",
   "main": "./build/index.js",
   "type": "module",
@@ -10,7 +10,7 @@
     "import": "./build/index.js"
   },
   "scripts": {
-    "bootstrap": "sh -c 'yarn && cd node_modules/@eosrio/hyperion-sequential-reader && npm i && npx tsc'",
+    "bootstrap": "yarn",
     "build": "npm run bootstrap && tsc && node scripts/create-dist-packages.mjs",
     "start": "node build/main.js",
     "test": "mocha build/tests/**/*.spec.js --timeout 120000",
@@ -37,7 +37,7 @@
     "ws": "^8.14.2"
   },
   "devDependencies": {
-    "@eosrio/hyperion-sequential-reader": "https://github.com/eosrio/hyperion-sequential-reader.git#hist_buf_size",
+    "@eosrio/hyperion-sequential-reader": "1.2.5",
     "@types/async": "^3.2.16",
     "@types/chai": "^4.3.11",
     "@types/lodash": "^4.14.202",

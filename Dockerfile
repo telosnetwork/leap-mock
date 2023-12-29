@@ -1,14 +1,10 @@
 FROM node:18-bullseye-slim
 
-ENV DEBIAN_FRONTEND=noninteractive
+WORKDIR /leap-mock
 
-RUN apt-get update && apt-get install -y git
+COPY . .
 
-WORKDIR /root/target
-
-COPY node_modules ./node_modules
-COPY build ./build
-COPY package.json .
+RUN npm run build
 
 ENV LOG_LEVEL=debug
 
