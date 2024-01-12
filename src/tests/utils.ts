@@ -1,5 +1,5 @@
 import {ChainDescriptor, NewChainInfo} from "../controller.js";
-import {HyperionSequentialReader} from "@eosrio/hyperion-sequential-reader";
+import {HyperionSequentialReader} from "@telosnetwork/hyperion-sequential-reader";
 import {sleep, randomHash} from "../utils.js";
 import {assert} from "chai";
 import {logger} from "../logging.js";
@@ -40,8 +40,10 @@ export async function expectSequence(
         poolSize: 1,
         blockConcurrency: 1,
         outputQueueLimit: 10,
-        startBlock: 1,
-        logLevel: logger.level
+        startBlock: 2,
+        endBlock: 100,
+        logLevel: logger.level,
+        skipInitialBlockCheck: true
     });
     reader.onDisconnect = async () => {
         if (!isExpectedSequence || reachedEnd)
@@ -56,7 +58,7 @@ export async function expectSequence(
         ['eosio.token', 'eosio.token'],
         ['eosio.evm', 'telos.evm']
     ])
-        reader.addContract(name, loadAbi(abiPath));
+        reader.addContract(name, ABI.from(loadAbi(abiPath)));
 
     let pushedLastUpdate = 0;
     let lastUpdateTime = new Date().getTime() / 1000;
@@ -93,6 +95,7 @@ import {
 } from "../utils.js";
 import {describe} from "mocha";
 import {ActionDescriptor} from "../types";
+import {ABI} from "@greymass/eosio";
 
 export function describeMockChainTests(
     title: string,

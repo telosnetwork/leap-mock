@@ -31,31 +31,31 @@ describeMockChainTests(
     {
         'simple fork': {
             sequence: [
-                1, 2, 3, 4, 5,
+                2, 3, 4, 5,
                 3, 4, 5, 6
             ],
             chainConfig: {jumps: [[5, 3]]}
         },
         'double fork': {
             sequence: [
-                1, 2, 3, 4, 5,
+                2, 3, 4, 5,
                 3, 4, 5, 6, 6, 7
             ],
             chainConfig: {jumps: [[5, 3], [6, 6]]}
         },
         'simple reconnect': {
-            sequence: [1, 2, 3 ,4],
+            sequence: [2, 3 ,4],
             chainConfig: {pauses: [[3, 2]]}
         },
         'multi reconnect': {
-            sequence: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+            sequence: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
             chainConfig: {pauses: [[3, 2], [10, 2]]}
         },
         'simple token transfer': {
-            sequence: [1],
+            sequence: [2],
             chainConfig: {
                 txs: {
-                    1: [new AntelopeTransfer({from: 'eosio', to: 'alice', quantity})]
+                    2: [new AntelopeTransfer({from: 'eosio', to: 'alice', quantity})]
                 }
             },
             testFn: async function (context: ControllerContext, chainInfo: NewChainInfo, runtime: ChainRuntime): Promise<void> {
@@ -77,13 +77,13 @@ describeMockChainTests(
             }
         },
         'simple evm deposit': {
-            sequence: [1, 2, 3, 4],
+            sequence: [2, 3, 4, 5],
             chainConfig: {
                 txs: {
-                    1: [new TelosEVMCreate({account: 'alice0'})],
-                    2: [new TelosEVMCreate({account: 'alice1'})],
-                    3: [new TelosEVMCreate({account: 'alice2'})],
-                    4: [new AntelopeTransfer({from: 'alice1', to: 'eosio.evm', quantity})]
+                    2: [new TelosEVMCreate({account: 'alice0'})],
+                    3: [new TelosEVMCreate({account: 'alice1'})],
+                    4: [new TelosEVMCreate({account: 'alice2'})],
+                    5: [new AntelopeTransfer({from: 'alice1', to: 'eosio.evm', quantity})]
                 }
             },
             testFn: async function (context: ControllerContext, chainInfo: NewChainInfo, runtime: ChainRuntime): Promise<void> {
@@ -107,11 +107,11 @@ describeMockChainTests(
             }
         },
         'evm deposit address in memo': {
-            sequence: [1, 2],
+            sequence: [2, 3],
             chainConfig: {
                 txs: {
-                    1: [new TelosEVMOpenWallet({account: 'alice', address: addressToChecksum160(testAddresses[0])})],
-                    2: [new AntelopeTransfer({from: 'alice', to: 'eosio.evm', quantity, memo: testAddresses[0].toString()})]
+                    2: [new TelosEVMOpenWallet({account: 'alice', address: addressToChecksum160(testAddresses[0])})],
+                    3: [new AntelopeTransfer({from: 'alice', to: 'eosio.evm', quantity, memo: testAddresses[0].toString()})]
                 }
             },
             testFn: async function (context: ControllerContext, chainInfo: NewChainInfo, runtime: ChainRuntime): Promise<void> {
@@ -128,12 +128,12 @@ describeMockChainTests(
             }
         },
         'simple raw evm tx': {
-            sequence: [1, 2, 3],
+            sequence: [2, 3, 4],
             chainConfig: {
                 txs: {
-                    1: [new TelosEVMOpenWallet({account: 'alice', address: addressToChecksum160(testAddresses[0])})],
-                    2: [new AntelopeTransfer({from: 'alice', to: 'eosio.evm', quantity, memo: testAddresses[0].toString()})],
-                    3: [new TelosEVMRaw({
+                    2: [new TelosEVMOpenWallet({account: 'alice', address: addressToChecksum160(testAddresses[0])})],
+                    3: [new AntelopeTransfer({from: 'alice', to: 'eosio.evm', quantity, memo: testAddresses[0].toString()})],
+                    4: [new TelosEVMRaw({
                             ram_payer: 'alice',
                             tx: buildEVMTx({
                                 senderKey: testPrivateKeys[0],
@@ -166,7 +166,7 @@ describeMockChainTests(
             }
         },
         'simple evm withdraw': {
-            sequence: [1, 2, 3],
+            sequence: [2, 3, 4],
             chainConfig: {
                 txs: {
                     1: [new TelosEVMCreate({account: 'alice'})],

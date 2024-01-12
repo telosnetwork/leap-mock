@@ -1,7 +1,7 @@
 {
   "name": "leap-mock",
   "repository": "git+https://github.com/guilledk/leap-mock.git",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "AntelopeIO/leap mocker for advanced indexer testing",
   "main": "./build/index.js",
   "type": "module",
@@ -22,9 +22,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@telosnetwork/hyperion-sequential-reader": "1.2.6",
     "@ethereumjs/tx": "^5.1.0",
     "@ethereumjs/util": "^9.0.1",
-    "@greymass/eosio": "0.6.11",
+    "@greymass/eosio": "0.7.0",
     "@types/express": "^4.17.20",
     "@types/ws": "^8.5.8",
     "async": "^3.2.4",
@@ -37,7 +38,6 @@
     "ws": "^8.14.2"
   },
   "devDependencies": {
-    "@eosrio/hyperion-sequential-reader": "1.2.5",
     "@types/async": "^3.2.16",
     "@types/chai": "^4.3.11",
     "@types/lodash": "^4.14.202",
