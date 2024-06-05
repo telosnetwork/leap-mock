@@ -2,10 +2,9 @@ import {LegacyTxData} from "@ethereumjs/tx";
 import {TEVMTransaction} from "telos-evm-custom-ds";
 import {addHexPrefix, Address} from "@ethereumjs/util";
 import * as evm from "@ethereumjs/common";
-import {Name, NameType} from "@greymass/eosio";
+import {APIClient, Name, NameType, UInt64} from "@wharfkit/antelope";
 import {AccountRow} from "./tables.js";
 import {ChainRuntime} from "../../controller.js";
-import {JsonRpc} from "eosjs";
 import {addressToSHA256} from "../../utils.js";
 import {JsonSerializable} from "../../chainbase.js";
 import {SELF} from "./constants.js";
@@ -98,14 +97,14 @@ export function getEVMBalanceForAccount(runtime: ChainRuntime, account: NameType
         return undefined;
 }
 
-export async function getEVMBalanceForAccountHTTP(rpc: JsonRpc, account: NameType): Promise<AccountRow | undefined> {
-    const rows = (await rpc.get_table_rows({
+export async function getEVMBalanceForAccountHTTP(rpc: APIClient, account: NameType): Promise<AccountRow | undefined> {
+    const rows = (await rpc.v1.chain.get_table_rows({
         json: true,
         code: SELF.toString(), table: 'account', scope: SELF.toString(),
         key_type: 'i64',
-        index_position: 3,
-        lower_bound: Name.from(account).value.toString(),
-        upper_bound: Name.from(account).value.toString(),
+        index_position: 'fourth',
+        lower_bound: UInt64.from(account),
+        upper_bound: UInt64.from(account),
         limit: 1
     })).rows as JsonSerializable[];
 
@@ -131,14 +130,14 @@ export function getEVMBalanceForAddress(runtime: ChainRuntime, addr: Address): A
         return undefined;
 }
 
-export async function getEVMBalanceForAddressHTTP(rpc: JsonRpc, addr: Address): Promise<AccountRow | undefined> {
-    const rows = (await rpc.get_table_rows({
+export async function getEVMBalanceForAddressHTTP(rpc: APIClient, addr: Address): Promise<AccountRow | undefined> {
+    const rows = (await rpc.v1.chain.get_table_rows({
         json: true,
         code: SELF, table: 'account', scope: SELF,
         key_type: 'sha256',
-        index_position: 2,
-        lower_bound: addressToSHA256(addr).toString(),
-        upper_bound: addressToSHA256(addr).toString(),
+        index_position: 'tertiary',
+        lower_bound: addressToSHA256(addr),
+        upper_bound: addressToSHA256(addr),
         limit: 1
     })).rows as JsonSerializable[];
 

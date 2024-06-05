@@ -6,7 +6,7 @@ import {
     randomInt,
     sleep,
 } from "./utils.js";
-import {ABI, Name, NameType, Serializer} from "@greymass/eosio";
+import {ABI, Name, NameType, Serializer} from "@wharfkit/antelope";
 import {logger} from "./logging.js";
 import {ActionDescriptor, ActionTrace, TransactionTraceOptions} from "./types.js";
 

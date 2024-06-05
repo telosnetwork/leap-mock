@@ -1,5 +1,5 @@
 import {ApplyContext, eosVMCheck} from "../abstract.js";
-import {Checksum160} from "@greymass/eosio";
+import {Checksum160} from "@wharfkit/antelope";
 import {Address} from "@ethereumjs/util";
 import {randomByteArray} from "../../utils.js";
 import {TEVMTransaction} from "telos-evm-custom-ds";

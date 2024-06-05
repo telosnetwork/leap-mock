@@ -1,5 +1,4 @@
-import {ABI, Name, NameType} from "@greymass/eosio";
-import {MockChainbase} from "./chainbase";
+import {NameType} from "@wharfkit/antelope";
 
 export interface ActionReceipt {
     receiver: NameType;

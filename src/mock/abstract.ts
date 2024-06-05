@@ -1,6 +1,6 @@
 import {ActionDescriptor, ActionTrace} from "../types.js";
 import {generateActionTrace} from "../utils.js";
-import {ABI, Name, NameType} from "@greymass/eosio";
+import {ABI, Name, NameType} from "@wharfkit/antelope";
 import {MockChainbase, TableIndexMapping, TableRow} from "../chainbase.js";
 
 

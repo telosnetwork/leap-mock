@@ -1,5 +1,5 @@
 import {ActionMocker, ApplyContext} from "../abstract.js";
-import {Asset} from "@greymass/eosio";
+import {Asset} from "@wharfkit/antelope";
 import {SELF, TOKEN_SYMBOL} from "./constants.js";
 import {AccountsRow} from "./tables.js";
 

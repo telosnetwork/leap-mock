@@ -6,7 +6,6 @@ import process from "process";
 import ControllerHTTPClient from "./controllerHTTPClient.js";
 import {generateTestChainDescriptor} from "./tests/utils.js";
 import {logger} from "./logging.js";
-import {ABI} from "@greymass/eosio";
 import {ActionDescriptor} from "./types";
 
 process.on('unhandledRejection', error => {

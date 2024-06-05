@@ -1,6 +1,6 @@
 import {ActionDescriptor} from "../../types";
 import {SELF} from "./constants.js";
-import {AssetType, NameType} from "@greymass/eosio";
+import {AssetType, NameType} from "@wharfkit/antelope";
 
 export class AntelopeTransfer implements ActionDescriptor {
     account: NameType = SELF;

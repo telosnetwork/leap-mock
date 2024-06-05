@@ -94,12 +94,10 @@ import {
     AssetType,
     Checksum160,
     Checksum256,
-    Int64,
     Name,
     NameType,
     Serializer,
-    UInt64
-} from "@greymass/eosio";
+} from "@wharfkit/antelope";
 import * as crypto from "crypto";
 import {Address} from "@ethereumjs/util";
 import {AddressType} from "./mock/telos.evm";

@@ -14,7 +14,7 @@ import {
 import {addressToChecksum160, assetQuantityToEvm, randomByteArray} from "../utils.js";
 import {Address} from "@ethereumjs/util";
 import {getBalanceForAccount, getBalanceForAccountHTTP} from "../mock/eosio.token/utils.js";
-import {Name, Serializer} from "@greymass/eosio";
+import {Serializer} from "@wharfkit/antelope";
 
 const quantity = '420.0000 TLOS'
 

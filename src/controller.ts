@@ -1,5 +1,5 @@
 import {MockChain} from "./chain.js";
-import {ABI} from "@greymass/eosio";
+import {ABI, APIClient, FetchProvider} from "@wharfkit/antelope";
 import {
     DEFAULT_ABI,
     generateInOrderBlockHashes,
@@ -14,13 +14,13 @@ import fs from "fs";
 import {logger} from "./logging.js";
 import {ActionDescriptor} from "./types.js";
 
-import { JsonRpc } from 'eosjs';
+import fetch from 'node-fetch'
 
-// @ts-ignore
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
 export function getRPCClient(endpoint: string) {
-    return new JsonRpc(endpoint, { fetch });
+    return new APIClient({
+        provider: new FetchProvider(endpoint, {fetch})
+    });
 }
 
 export interface ChainDescriptor {

@@ -1,4 +1,4 @@
-import {Asset, Checksum160, Name, NameType, UInt64} from "@greymass/eosio";
+import {Asset, Checksum160, Name, NameType, UInt64} from "@wharfkit/antelope";
 import {ActionMocker, ApplyContext, eosVMCheck} from "../abstract.js";
 import {Address} from "@ethereumjs/util";
 import {

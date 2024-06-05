@@ -1,4 +1,4 @@
-import {ABI} from "@greymass/eosio";
+import {ABI} from "@wharfkit/antelope";
 import fs from 'fs';
 import path from "path";
 import {fileURLToPath} from "node:url";

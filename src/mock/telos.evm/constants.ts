@@ -1,4 +1,4 @@
-import {Asset, Name} from "@greymass/eosio";
+import {Asset, Name} from "@wharfkit/antelope";
 
 export const SELF = Name.from('eosio.evm');
 export const TOKEN_CONTRACT = Name.from('eosio.token');

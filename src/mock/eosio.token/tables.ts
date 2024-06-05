@@ -1,4 +1,4 @@
-import {Asset} from "@greymass/eosio";
+import {Asset} from "@wharfkit/antelope";
 import {JsonSerializable, TableRow} from "../../chainbase.js";
 
 export interface AccountsRowJSON {

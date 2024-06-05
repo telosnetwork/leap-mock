@@ -1,4 +1,4 @@
-import {ABI, Checksum256, Int64, Name, NameType, UInt64} from "@greymass/eosio";
+import {ABI, Checksum256, Int64, Name, NameType, UInt64} from "@wharfkit/antelope";
 import {nameToBigInt, uint8ArrayToBigInt} from "./utils.js";
 import {eosVMCheck} from "./mock/abstract.js";
 import {BufferedMap, MapLevel} from "./bufferedMap.js";

@@ -95,7 +95,7 @@ import {
 } from "../utils.js";
 import {describe} from "mocha";
 import {ActionDescriptor} from "../types";
-import {ABI} from "@greymass/eosio";
+import {ABI} from "@wharfkit/antelope";
 
 export function describeMockChainTests(
     title: string,

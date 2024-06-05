@@ -1,4 +1,4 @@
-import {Serializer} from "@greymass/eosio";
+import {Serializer} from "@wharfkit/antelope";
 import {WebSocket, WebSocketServer} from "ws";
 import {MockChain} from "./chain.js";
 import {DEFAULT_ABI_STRING} from "./utils.js";

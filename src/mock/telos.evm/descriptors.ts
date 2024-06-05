@@ -1,9 +1,8 @@
-import {SELF, TOKEN_CONTRACT} from "./constants.js";
-import {AntelopeTransfer} from "../eosio.token/descriptors.js";
-import {AssetType, Checksum160Type, NameType} from "@greymass/eosio";
+import {SELF} from "./constants.js";
+import {AssetType, Checksum160Type, NameType} from "@wharfkit/antelope";
 import {ActionDescriptor} from "../../types.js";
-import {TEVMTransaction} from "telos-evm-custom-ds";
 import {LegacyTransaction} from "@ethereumjs/tx";
+import {TEVMTransaction} from "telos-evm-custom-ds";
 
 
 export class TelosEVMCreate implements ActionDescriptor {
@@ -44,7 +43,7 @@ export class TelosEVMRaw implements ActionDescriptor {
 
     constructor(opts: {
         ram_payer: NameType,
-        tx: Uint8Array | string | LegacyTransaction,
+        tx: Uint8Array | string | LegacyTransaction | TEVMTransaction,
         estimate_gas: boolean,
         sender?: Checksum160Type
     }) {
