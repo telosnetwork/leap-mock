@@ -1,7 +1,7 @@
 {
   "name": "leap-mock",
   "repository": "git+https://github.com/guilledk/leap-mock.git",
-  "version": "0.1.9-rc1",
+  "version": "0.1.9-rc2",
   "description": "AntelopeIO/leap mocker for advanced indexer testing",
   "main": "./build/index.js",
   "type": "module",

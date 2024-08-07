@@ -126,13 +126,13 @@ export class Controller {
             throw new Error("Chain ID already in use.")
 
         const infoObj: NewChainInfo = {
-            chainId: desc.chainId ? desc.chainId : randomHash(),
-            shipPort: desc.shipPort ? desc.shipPort : await getRandomPort(),
-            httpPort: desc.httpPort ? desc.httpPort : await getRandomPort(),
-            startTime: desc.startTime ? desc.startTime : getNextBlockTime().toISOString(),
-            abi: desc.abi ? desc.abi : DEFAULT_ABI,
+            chainId: desc.chainId ?? randomHash(),
+            shipPort: desc.shipPort ?? (await getRandomPort()),
+            httpPort: desc.httpPort ?? (await getRandomPort()),
+            startTime: desc.startTime ?? getNextBlockTime().toISOString(),
+            abi: desc.abi ?? DEFAULT_ABI,
             blocks: [],
-            asapMode: desc.asapMode ? desc.asapMode : false
+            asapMode: desc.asapMode ?? false
         };
         const pauseHandler = async (time: number) => {
             await this.chainNetworkDown(infoObj.chainId);
@@ -183,7 +183,7 @@ export class Controller {
         const shipSocket = new ShipSocket(chain, infoObj.shipPort);
         const httpSocket = new HTTPAPISocket(chain, infoObj.httpPort);
 
-        this.chains[desc.chainId] = {chain, network: {isUp: false, shipSocket, httpSocket}};
+        this.chains[infoObj.chainId] = {chain, network: {isUp: false, shipSocket, httpSocket}};
 
         // this.chainNetworkUp(desc.chainId);
 
