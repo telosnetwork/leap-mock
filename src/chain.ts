@@ -18,14 +18,12 @@ export class MockChain {
     private jumps;
     private jumpIndex;
 
+    public lastSent: number;
     private clientAckBlock: number;
-    private currentBlock: number;
     private forkDB = {
         block_id: ZERO_HASH,
         block_num: 0
     };
-
-    private _produceTask: any;
 
     constructor(
         chainId: string,
@@ -36,23 +34,26 @@ export class MockChain {
     ) {
         this.chainId = chainId;
         this.startTime = startTime;
+
         this.startBlock = startBlock;
+        this.lastSent = startBlock - 1;
         this.endBlock = endBlock;
         this.shipAbi = shipAbi;
 
         this.clientAckBlock = this.startBlock - 1;
-        this.currentBlock = this.startBlock;
 
         this.jumps = [];
         this.jumpIndex = 0;
 
         this.blockInfo = [];
 
-        const randBlocks = [];
-        for (let i = startBlock - 1; i <= endBlock; i++)
-            randBlocks.push(randomHash());
+        for (let j = 0; j < 2; j++) {
+            const randBlocks = [];
+            for (let i = startBlock - 1; i <= endBlock; i++)
+                randBlocks.push(randomHash());
 
-        this.setBlockInfo(randBlocks, 0);
+            this.setBlockInfo(randBlocks, j);
+        }
     }
 
     setJumps(jumps: [number, number][], index: number) {
@@ -80,8 +81,8 @@ export class MockChain {
         return this.blockInfo[this.jumpIndex][blockNum - this.startBlock + 1];
     }
 
-    getLibBlock() : [number, string] {
-        let libNum = this.currentBlock - libOffset;
+    getLibBlock(blockNum: number) : [number, string] {
+        let libNum = blockNum - libOffset;
         let libHash = ZERO_HASH;
         if (this.startBlock <= libNum && this.endBlock >= libNum)
             libHash = this.getBlockHash(libNum);
@@ -117,17 +118,17 @@ export class MockChain {
         };
     }
 
-    generateHeadBlockResponse() {
-        const blockHash = this.getBlockHash(this.currentBlock);
+    generateHeadBlockResponse(blockNum: number) {
+        const blockHash = this.getBlockHash(blockNum);
 
-        const prevBlockNum = this.currentBlock - 1;
+        const prevBlockNum = blockNum - 1;
         const prevHash = this.getBlockHash(prevBlockNum);
 
-        const [libNum, libHash] = this.getLibBlock();
+        const [libNum, libHash] = this.getLibBlock(blockNum);
 
         return {
             head: {
-                block_num: this.currentBlock,
+                block_num: blockNum,
                 block_id: blockHash
             },
             last_irreversible: {
@@ -135,7 +136,7 @@ export class MockChain {
                 block_id: libHash
             },
             this_block: {
-                block_num: this.currentBlock,
+                block_num: blockNum,
                 block_id: blockHash
             },
             prev_block: {
@@ -143,7 +144,7 @@ export class MockChain {
                 block_id: prevHash
             },
             block: Serializer.encode(
-                {type: 'signed_block', abi: this.shipAbi, object: this.generateBlock(this.currentBlock)}),
+                {type: 'signed_block', abi: this.shipAbi, object: this.generateBlock(blockNum)}),
             traces: Serializer.encode(
                 {type: 'action_trace[]', abi: this.shipAbi, object: []}),
             deltas: Serializer.encode(
@@ -151,13 +152,13 @@ export class MockChain {
         }
     }
 
-    generateStatusResponse() {
-        const blockHash = this.getBlockHash(this.currentBlock);
-        const [libNum, libHash] = this.getLibBlock();
+    generateStatusResponse(blockNum: number) {
+        const blockHash = this.getBlockHash(blockNum);
+        const [libNum, libHash] = this.getLibBlock(blockNum);
 
         return {
             head: {
-                block_num: this.currentBlock,
+                block_num: blockNum,
                 block_id: blockHash
             },
             last_irreversible: {
@@ -173,41 +174,45 @@ export class MockChain {
     }
 
     ackBlocks(ws, amount: number) {
-        if (this.currentBlock + 1 > this.endBlock)
+        if (this.lastSent + 1 > this.endBlock)
             return;
 
         this.clientAckBlock += amount;
 
-        while (this.currentBlock <= this.clientAckBlock)
-            this.produceBlockAndSend(ws);
+        while (this.lastSent <= this.clientAckBlock) {
+            if (this.lastSent + 1 > this.endBlock)
+                break;
+
+            if (this.jumpIndex < this.jumps.length &&
+                this.lastSent + 1 == this.jumps[this.jumpIndex][0]) {
+                this.setBlock(this.jumps[this.jumpIndex][1]);
+            } else
+                this.lastSent += 1;
+
+            console.log(`send block ${this.lastSent}`);
+            const response = Serializer.encode({
+                type: "result",
+                abi: this.shipAbi,
+                object: ["get_blocks_result_v0", this.generateHeadBlockResponse(this.lastSent)]
+            }).array;
+            ws.send(response);
+        }
     }
 
     setBlock(num: number) {
-        this.currentBlock = num;
         this.clientAckBlock = num;
+        this.lastSent = num - 1;
         this.forkDB.block_id = this.getBlockHash(num);
         this.forkDB.block_num = num;
         this.jumpIndex++;
         console.log(`CONTROL: set next block to ${num}`);
     }
 
-    increaseBlock() {
-        if (this.currentBlock + 1 > this.endBlock)
-            return;
+    generateChainInfo(blockNum: number) {
+        const headBlock = this.generateBlock(blockNum);
+        const headHash = this.getBlockHash(blockNum);
 
-        if (this.jumpIndex < this.jumps.length &&
-            this.currentBlock + 1 == this.jumps[this.jumpIndex][0]) {
-            this.setBlock(this.jumps[this.jumpIndex][1]);
-            this.jumpIndex++;
-        } else
-            this.currentBlock++;
-    }
-
-    generateChainInfo() {
-        const headBlock = this.generateBlock(this.currentBlock);
-        const headHash = this.getBlockHash(this.currentBlock);
-
-        const [libNum, libHash] = this.getLibBlock();
+        const [libNum, libHash] = this.getLibBlock(blockNum);
         let libTimestamp = new Date(0).toISOString().slice(0, -1);
         if (libNum > 0)
             libTimestamp = this.generateBlock(libNum).timestamp;
@@ -215,7 +220,7 @@ export class MockChain {
         return {
             server_version: 'cafebabe',
             chain_id: this.chainId,
-            head_block_num: this.currentBlock,
+            head_block_num: blockNum,
             last_irreversible_block_num: libNum,
             last_irreversible_block_id: libHash,
             head_block_id: headHash,
@@ -234,19 +239,5 @@ export class MockChain {
             earliest_available_block_num: this.startBlock,
             last_irreversible_block_time: libTimestamp
         };
-    }
-
-    produceBlockAndSend(ws) {
-        if (this.currentBlock + 1 > this.endBlock)
-            return;
-
-        console.log('sending one block...')
-        const response = Serializer.encode({
-            type: "result",
-            abi: this.shipAbi,
-            object: ["get_blocks_result_v0", this.generateHeadBlockResponse()]
-        }).array;
-        this.increaseBlock();
-        ws.send(response);
     }
 }

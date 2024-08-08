@@ -41,7 +41,7 @@ chainWss.on('connection', (ws) => {
                 const statusResponse = Serializer.encode({
                     type: "result",
                     abi: shipAbi,
-                    object: ["get_status_result_v0", chain.generateStatusResponse()]
+                    object: ["get_status_result_v0", chain.generateStatusResponse(chain.lastSent + 1)]
                 }).array;
                 ws.send(statusResponse);
                 break;
@@ -108,11 +108,11 @@ chainApp.post('/v1/chain/get_block', (req: Request, res: Response) => {
 
 // Get Info
 chainApp.get('/v1/chain/get_info', (req: Request, res: Response) => {
-    res.json(chain.generateChainInfo());
+    res.json(chain.generateChainInfo(chain.lastSent));
 });
 
 chainApp.post('/v1/chain/get_info', (req: Request, res: Response) => {
-    res.json(chain.generateChainInfo());
+    res.json(chain.generateChainInfo(chain.lastSent));
 });
 
 chainApp.listen(chainPort, () => {
