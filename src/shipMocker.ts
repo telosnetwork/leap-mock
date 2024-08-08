@@ -72,10 +72,12 @@ chainApp.use((req: Request, res: Response, next) => {
         data += chunk;
     });
     req.on('end', () => {
-        // @ts-ignore
-        req.rawBody = data;
-        if (Object.keys(req.body).length == 0)
-            req.body = JSON.parse(data);
+        if (data.length > 0) {
+            // @ts-ignore
+            req.rawBody = data;
+            if (Object.keys(req.body).length == 0)
+                req.body = JSON.parse(data);
+        }
         next();
     });
 });

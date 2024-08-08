@@ -174,17 +174,16 @@ export class MockChain {
     }
 
     ackBlocks(ws, amount: number) {
-        if (this.lastSent + 1 > this.endBlock)
+        if (this.lastSent + 1 == this.endBlock)
             return;
 
         this.clientAckBlock += amount;
 
-        while (this.lastSent <= this.clientAckBlock) {
-            if (this.lastSent + 1 > this.endBlock)
-                break;
+        while (this.lastSent + 1 < this.endBlock &&
+               this.lastSent <= this.clientAckBlock) {
 
             if (this.jumpIndex < this.jumps.length &&
-                this.lastSent + 1 == this.jumps[this.jumpIndex][0]) {
+                this.lastSent == this.jumps[this.jumpIndex][0]) {
                 this.setBlock(this.jumps[this.jumpIndex][1]);
             } else
                 this.lastSent += 1;
@@ -200,8 +199,8 @@ export class MockChain {
     }
 
     setBlock(num: number) {
-        this.clientAckBlock = num;
-        this.lastSent = num - 1;
+        this.clientAckBlock = num + 1;
+        this.lastSent = num;
         this.forkDB.block_id = this.getBlockHash(num);
         this.forkDB.block_num = num;
         this.jumpIndex++;
