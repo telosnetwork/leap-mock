@@ -4,60 +4,21 @@ import * as console from "console";
 import {loadAbi, randomHash} from "./utils.js";
 import {MockChain} from "./chain.js";
 import * as process from "process";
-import { Command, Option } from 'commander';
 
 const shipAbiString = loadAbi();
 const shipAbi = JSON.parse(shipAbiString);
 
-let shipPort = 29999;
-let chainPort = 8888;
+let shipPort = 18998;
+let chainPort = 8889;
 let controlPort = 6970;
 
-const program = new Command();
-
-const isoDateOption = new Option('-s, --startTime <startTime>', 'Start time in ISO format')
-    .argParser((value) => {
-        if (!value.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(([+-]\d{2}:\d{2})|Z)?$/)) {
-            throw new Error('Invalid ISO date format');
-        }
-        return value;
-    });
-
-let chain;
-program
-    .command('run <startBlock> <endBlock>')
-    .addOption(isoDateOption)
-    .option('-c, --chainId [chainId]', 'Chain ID')
-    .option('-S, --shipPort [shipPort]', 'Mock state history websocket port')
-    .option('-a, --chainPort [chainPort]', 'Mock v1 chain port')
-    .option('-C, --controlPort [controlPort]', 'Control http port')
-    .action((startBlock, endBlock, options) => {
-        if (options.shipPort)
-            shipPort = parseInt(options.shipPort, 10);
-
-        if (options.chainPort)
-            chainPort = parseInt(options.chainPort, 10);
-
-        if (options.controlPort)
-            controlPort = parseInt(options.controlPort, 10);
-
-        console.log(`startBlock: ${startBlock}`);
-        console.log(`endBlock: ${endBlock}`);
-        console.log(`startTime: ${options.startTime || 'None'}`);
-        console.log(`chainId: ${options.chainId || 'None'}`);
-        console.log(`shipPort: ${shipPort}`);
-        console.log(`chainPort: ${chainPort}`);
-        console.log(`controlPort: ${controlPort}`);
-        chain = new MockChain(
-            options.chainId ? options.chainId : randomHash(),
-            options.startTime ? options.startTime : new Date().toISOString(),
-            parseInt(startBlock, 10),
-            parseInt(endBlock, 10),
-            shipAbi
-        );
-    });
-
-program.parse(process.argv);
+let chain = new MockChain(
+    process.env.MOCK_CHAIN_ID ?? randomHash(),
+    process.env.MOCK_START_TIME ?? new Date().toISOString(),
+    process.env.MOCK_START_BLOCK ? parseInt(process.env.MOCK_START_BLOCK, 10) : 1,
+    process.env.MOCK_STOP_BLOCK ? parseInt(process.env.MOCK_STOP_BLOCK, 10) : 100,
+    shipAbi
+);
 
 // Mock chain session endpoint
 
@@ -73,7 +34,7 @@ chainWss.on('connection', (ws) => {
 
         switch (requestType) {
             case "get_blocks_request_v0":
-                chain.startProduction(ws);
+                chain.ackBlocks(ws, 15);
                 break;
 
             case "get_status_request_v0":
@@ -86,7 +47,7 @@ chainWss.on('connection', (ws) => {
                 break;
 
             case "get_blocks_ack_request_v0":
-                chain.ackBlocks(requestData.num_messages);
+                chain.ackBlocks(ws, requestData.num_messages);
                 break;
             default:
                 console.warn(`unhandled type: ${requestType}`);

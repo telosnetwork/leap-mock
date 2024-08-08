@@ -172,11 +172,14 @@ export class MockChain {
         }
     }
 
-    ackBlocks(amount: number) {
+    ackBlocks(ws, amount: number) {
         if (this.currentBlock + 1 > this.endBlock)
             return;
 
         this.clientAckBlock += amount;
+
+        while (this.currentBlock <= this.clientAckBlock)
+            this.produceBlockAndSend(ws);
     }
 
     setBlock(num: number) {
@@ -233,30 +236,17 @@ export class MockChain {
         };
     }
 
-    produceBlock(ws) {
+    produceBlockAndSend(ws) {
         if (this.currentBlock + 1 > this.endBlock)
             return;
 
-        if (this.currentBlock <= this.clientAckBlock) {
-            console.log('sending one block...')
-            const response = Serializer.encode({
-                type: "result",
-                abi: this.shipAbi,
-                object: ["get_blocks_result_v0", this.generateHeadBlockResponse()]
-            }).array;
-            this.increaseBlock();
-            ws.send(response);
-        }
-    }
-
-    startProduction(ws) {
-        console.log('starting production...');
-        this._produceTask = setInterval(() => {
-            this.produceBlock(ws)
-        }, 500);
-    }
-
-    stopProduction() {
-        clearInterval(this._produceTask);
+        console.log('sending one block...')
+        const response = Serializer.encode({
+            type: "result",
+            abi: this.shipAbi,
+            object: ["get_blocks_result_v0", this.generateHeadBlockResponse()]
+        }).array;
+        this.increaseBlock();
+        ws.send(response);
     }
 }

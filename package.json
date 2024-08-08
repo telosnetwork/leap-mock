@@ -1,7 +1,7 @@
 {
-  "name": "ship-mock",
-  "repository": "guilledk/ship-mock",
-  "version": "0.1.0",
+  "name": "leap-mock",
+  "repository": "guilledk/leap-mock",
+  "version": "0.2.0",
   "description": "",
   "main": "./build/shipMocker.js",
   "exports": {
@@ -12,7 +12,8 @@
   "type": "module",
   "scripts": {
     "start": "node build/shipMocker.js",
-    "build": "tsc && node scripts/create-dist-packages.mjs"
+    "build": "tsc && node scripts/create-dist-packages.mjs",
+    "docker-build": "docker build -t guilledk/leap-mock:latest ."
   },
   "author": "",
   "license": "ISC",

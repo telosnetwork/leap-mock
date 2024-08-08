@@ -1,7 +1,7 @@
 import fs from 'fs';
 
 export function loadAbi() {
-    const filePath = './shipAbi.json';
+    const filePath = './build/shipAbi.json';
     return fs.readFileSync(filePath, 'utf-8');
 };
 
