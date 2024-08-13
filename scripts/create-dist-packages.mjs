@@ -1,4 +1,4 @@
-import { writeFileSync, copyFileSync } from 'node:fs';
+import {  copyFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'path';
 

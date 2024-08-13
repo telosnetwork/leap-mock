@@ -1,9 +1,16 @@
 import fs from 'fs';
+import path from "path";
+import {fileURLToPath} from "node:url";
 
-export function loadAbi() {
-    const filePath = './build/shipAbi.json';
+const currentDir = path.dirname(fileURLToPath(import.meta.url));
+
+function loadAbi() {
+    const filePath = path.join(currentDir, './shipAbi.json');
     return fs.readFileSync(filePath, 'utf-8');
-};
+}
+
+export const SHIP_ABI_STR = loadAbi();
+export const SHIP_ABI = JSON.parse(SHIP_ABI_STR);
 
 export function randomHex(size: number): string {
     let result = '';

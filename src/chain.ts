@@ -1,21 +1,43 @@
-import {randomHash} from "./utils.js";
-import {ABI, Serializer} from "@greymass/eosio";
+import {randomHash, SHIP_ABI, SHIP_ABI_STR} from "./utils.js";
+import {Serializer} from "@wharfkit/antelope";
 import console from "console";
 
 
 const libOffset = 333;
 const ZERO_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
 
+import { z } from 'zod';
+import * as WS from "ws";
+import express, {Express, Request, Response} from "express";
+import bodyParser from "body-parser";
+
+export const JumpInfoSchema = z.object({
+    from: z.number(),
+    to: z.number()
+});
+
+export type JumpInfo = z.infer<typeof JumpInfoSchema>;
+
+export const ChainDescriptorSchema = z.object({
+    chain_id: z.string().default('0000000000000000000000000000deadbeef0000000000000000000000000000'),
+    start_time: z.string().optional(),
+    jumps: z.array(JumpInfoSchema).default([]),
+    chain_start_block: z.number().default(1),
+    chain_end_block: z.number().default(1000),
+    session_start_block: z.number().default(1),
+    session_stop_block: z.number().default(1000),
+    http_port: z.number().default(8889),
+    ship_port: z.number().default(18999)
+});
+
+export type ChainDescriptor = z.infer<typeof ChainDescriptorSchema>;
+
 
 export class MockChain {
-    private startBlock: number;
-    private endBlock: number;
-    private shipAbi: ABI;
-    private chainId: string;
-    private startTime: string;
-    private blockInfo: string[][];
-
-    private jumps;
+    private descriptor: ChainDescriptor;
+    private startTime: number;
+    private blockInfo: Map<number, Map<number, string>>;
+    private jumps: Map<number, JumpInfo>;
     private jumpIndex;
 
     public lastSent: number;
@@ -25,66 +47,184 @@ export class MockChain {
         block_num: 0
     };
 
-    constructor(
-        chainId: string,
-        startTime: string,
-        startBlock: number,
-        endBlock: number,
-        shipAbi: ABI
-    ) {
-        this.chainId = chainId;
-        this.startTime = startTime;
+    private networkUp: boolean = false;
+    private shipWS: WS.WebSocketServer = null;
+    private httpApp: Express = null;
 
-        this.startBlock = startBlock;
-        this.lastSent = startBlock - 1;
-        this.endBlock = endBlock;
-        this.shipAbi = shipAbi;
+    private async startNetwork() {
+        if (this.networkUp)
+            throw new Error('Network already up!');
 
-        this.clientAckBlock = this.startBlock - 1;
+        this.shipWS = new WS.WebSocketServer({port: this.descriptor.ship_port});
 
-        this.jumps = [];
-        this.jumpIndex = 0;
+        this.shipWS.on('connection', (ws: WS.WebSocket) => {
+            ws.on('message', async (message: WS.RawData) => {
+                const request = Serializer.decode({
+                    type: "request",
+                    abi: SHIP_ABI,
+                    data: message as Buffer
+                });
+                const requestType = request[0];
+                const requestData = Serializer.objectify(request[1]);
+                console.log(requestType, requestData);
 
-        this.blockInfo = [];
+                switch (requestType) {
+                    case "get_blocks_request_v0":
+                        this.ackBlocks(ws, 1);
+                        break;
 
-        for (let j = 0; j < 2; j++) {
-            const randBlocks = [];
-            for (let i = startBlock - 1; i <= endBlock; i++)
-                randBlocks.push(randomHash());
+                    case "get_status_request_v0":
+                        const statusResponse = Serializer.encode({
+                            type: "result",
+                            abi: SHIP_ABI,
+                            object: [
+                                "get_status_result_v0",
+                                this.generateStatusResponse(this.lastSent + 1)
+                            ]
+                        }).array;
+                        ws.send(statusResponse);
+                        break;
 
-            this.setBlockInfo(randBlocks, j);
-        }
+                    case "get_blocks_ack_request_v0":
+                        this.ackBlocks(ws, requestData.num_messages);
+                        break;
+
+                    default:
+                        console.warn(`unhandled type: ${requestType}`);
+                        break;
+                }
+            });
+            ws.send(SHIP_ABI_STR);
+        });
+        await new Promise<void>(resolve => {
+            this.shipWS.once('listening', () => resolve());
+        });
+        console.log(`Started SHIP mock endpoint @ ${this.descriptor.ship_port}`);
+
+        this.httpApp = express();
+        this.httpApp.use(bodyParser.json());
+
+        this.httpApp.use((req: Request, _: Response, next) => {
+            let data = '';
+            req.on('data', chunk => {
+                data += chunk;
+            });
+            req.on('end', () => {
+                if (data.length > 0) {
+                    // @ts-ignore
+                    req.rawBody = data;
+                    if (Object.keys(req.body).length == 0)
+                        req.body = JSON.parse(data);
+                }
+                next();
+            });
+        });
+
+        // Get Block
+        this.httpApp.get('/v1/chain/get_block/:block_num_or_id', (req: Request, res: Response) => {
+            const blockNum = parseInt(req.params.block_num_or_id, 10);
+            const block = this.generateBlock(blockNum);
+            res.json({
+                ...block,
+                id: this.getBlockHash(blockNum),
+                block_num: blockNum,
+                ref_block_prefix: 0
+            });
+        });
+
+        this.httpApp.post('/v1/chain/get_block', (req: Request, res: Response) => {
+            const data = req.body;
+            const blockNum = parseInt(data.block_num_or_id, 10);
+            const block = this.generateBlock(blockNum);
+            block.header_extensions = null;
+            block.block_extensions = null;
+            res.json({
+                ...block,
+                id: this.getBlockHash(blockNum),
+                block_num: blockNum,
+                ref_block_prefix: 0
+            });
+        });
+
+        // Get Info
+        this.httpApp.get('/v1/chain/get_info', (req: Request, res: Response) => {
+            res.json(this.generateChainInfo(this.lastSent));
+        });
+
+        this.httpApp.post('/v1/chain/get_info', (req: Request, res: Response) => {
+            res.json(this.generateChainInfo(this.lastSent));
+        });
+
+        await new Promise<void>(resolve => {
+            this.httpApp.listen(this.descriptor.http_port, () => {
+                console.log(`Started HTTP mock endpoint @ ${this.descriptor.http_port}`);
+                resolve();
+            });
+        });
+
+        this.networkUp = true;
+        console.log('Network is up');
     }
 
-    setJumps(jumps: [number, number][], index: number) {
-        this.jumpIndex = 0;
-        this.jumps = jumps;
-        console.log(`CONTROL: set jumps array of size ${jumps.length} index ${index}`);
+    private async stopNetwork() {
+        if (!this.networkUp)
+            throw new Error('Network isn\'t up!');
+
+        // close all ship connections
+        this.shipWS.clients.forEach((ws: WS.WebSocket) => {
+            if (ws.readyState == WS.WebSocket.OPEN)
+                ws.close();
+        });
+
+        // close ship server and await close cb
+        await new Promise(resolve => this.shipWS.close(resolve));
+
+        this.networkUp = false;
+        console.log('Network is down');
     }
 
-    setBlockInfo(blocks: string[], index: number) {
-        if (index > this.blockInfo.length)
-            throw new Error("Tried to set index out of order");
+    async setChain(descriptor: ChainDescriptor) {
+        if (this.networkUp)
+            await this.stopNetwork();
 
-        if (index == this.blockInfo.length)
-            this.blockInfo.push(blocks);
-        else
-            this.blockInfo[index] = blocks;
+        this.descriptor = descriptor;
+        this.startTime = descriptor.start_time ? new Date(descriptor.start_time).getTime() : new Date().getTime();
 
-        console.log(`CONTROL: set blocks array of size ${blocks.length} index ${index}`);
+        this.jumpIndex = 0;
+        this.jumps = new Map(descriptor.jumps.entries());
+
+        this.blockInfo = new Map();
+
+        for(let j = 0; j <= descriptor.jumps.length; j++)  {
+            const blocks: Map<number, string> = new Map();
+            for (let blockNum = descriptor.chain_start_block; blockNum <= descriptor.chain_end_block; blockNum++)
+                blocks.set(blockNum, randomHash());
+
+            this.blockInfo.set(j, blocks);
+        };
+        console.log(`CONTROL: set chain to:\n${JSON.stringify(descriptor, null, 4)}`);
+
+        this.clientAckBlock = this.descriptor.session_start_block - 1;
+        this.lastSent = this.clientAckBlock;
+        console.log(`CONTROL: set session to ${descriptor.session_start_block}-${descriptor.session_stop_block}`);
+
+        await this.startNetwork();
     }
 
     getBlockHash(blockNum: number) {
-        if (blockNum < (this.startBlock - 1) || blockNum > this.endBlock)
-            throw new Error("Invalid range");
+        if ((blockNum < this.descriptor.chain_start_block) || blockNum > this.descriptor.chain_end_block)
+            throw new Error(`${blockNum} not in block range`);
 
-        return this.blockInfo[this.jumpIndex][blockNum - this.startBlock + 1];
+        const hash = this.blockInfo.get(this.jumpIndex).get(blockNum);
+        if (!hash)
+            throw new Error(`Invalid access ${this.jumpIndex}::${blockNum}`);
+        return hash;
     }
 
     getLibBlock(blockNum: number) : [number, string] {
         let libNum = blockNum - libOffset;
         let libHash = ZERO_HASH;
-        if (this.startBlock <= libNum && this.endBlock >= libNum)
+        if (this.descriptor.chain_start_block <= libNum && this.descriptor.chain_end_block >= libNum)
             libHash = this.getBlockHash(libNum);
         else
             libNum = 0;
@@ -93,11 +233,10 @@ export class MockChain {
     }
 
     generateBlock(blockNum: number) {
-        const startTime = new Date(this.startTime).getTime();
-        if (isNaN(startTime)) {
+        if (isNaN(this.startTime)) {
             throw new Error('Invalid startTime');
         }
-        const blockTimestampMs = startTime + (blockNum * 500);
+        const blockTimestampMs = this.startTime + (blockNum * 500);
         const blockTimestamp = new Date(blockTimestampMs);
 
         const prevHash = this.getBlockHash(blockNum - 1);
@@ -144,11 +283,11 @@ export class MockChain {
                 block_id: prevHash
             },
             block: Serializer.encode(
-                {type: 'signed_block', abi: this.shipAbi, object: this.generateBlock(blockNum)}),
+                {type: 'signed_block', abi: SHIP_ABI, object: this.generateBlock(blockNum)}),
             traces: Serializer.encode(
-                {type: 'action_trace[]', abi: this.shipAbi, object: []}),
+                {type: 'action_trace[]', abi: SHIP_ABI, object: []}),
             deltas: Serializer.encode(
-                {type: 'table_delta[]', abi: this.shipAbi, object: []})
+                {type: 'table_delta[]', abi: SHIP_ABI, object: []})
         }
     }
 
@@ -165,33 +304,33 @@ export class MockChain {
                 block_num: libNum,
                 block_id: libHash
             },
-            trace_begin_block: this.startBlock,
-            trace_end_block: this.endBlock,
-            chain_state_begin_block: this.startBlock,
-            chain_state_end_block: this.endBlock,
-            chain_id: this.chainId
+            trace_begin_block: 1,
+            trace_end_block: this.descriptor.chain_end_block,
+            chain_state_begin_block: 1,
+            chain_state_end_block: this.descriptor.chain_end_block,
+            chain_id: this.descriptor.chain_id
         }
     }
 
     ackBlocks(ws, amount: number) {
-        if (this.lastSent + 1 == this.endBlock)
+        if (this.lastSent == this.descriptor.session_stop_block)
             return;
 
         this.clientAckBlock += amount;
 
-        while (this.lastSent + 1 < this.endBlock &&
+        while (this.lastSent < this.descriptor.session_stop_block &&
                this.lastSent <= this.clientAckBlock) {
 
-            if (this.jumpIndex < this.jumps.length &&
-                this.lastSent == this.jumps[this.jumpIndex][0]) {
-                this.setBlock(this.jumps[this.jumpIndex][1]);
+            if (this.jumpIndex < this.jumps.size &&
+                this.lastSent == this.jumps.get(this.jumpIndex).from) {
+                this.setBlock(this.jumps.get(this.jumpIndex).to);
             } else
                 this.lastSent += 1;
 
             console.log(`send block ${this.lastSent}`);
             const response = Serializer.encode({
                 type: "result",
-                abi: this.shipAbi,
+                abi: SHIP_ABI,
                 object: ["get_blocks_result_v0", this.generateHeadBlockResponse(this.lastSent)]
             }).array;
             ws.send(response);
@@ -218,7 +357,7 @@ export class MockChain {
 
         return {
             server_version: 'cafebabe',
-            chain_id: this.chainId,
+            chain_id: this.descriptor.chain_id,
             head_block_num: blockNum,
             last_irreversible_block_num: libNum,
             last_irreversible_block_id: libHash,
@@ -235,7 +374,7 @@ export class MockChain {
             server_full_version_string: 'v4.0.0-ship-mocker',
             total_cpu_weight: '53817162457',
             total_net_weight: '45368489859',
-            earliest_available_block_num: this.startBlock,
+            earliest_available_block_num: this.descriptor.chain_start_block,
             last_irreversible_block_time: libTimestamp
         };
     }
