@@ -23,14 +23,20 @@ export const ChainDescriptorSchema = z.object({
     start_time: z.string().optional(),
     jumps: z.array(JumpInfoSchema).default([]),
     chain_start_block: z.number().default(1),
-    chain_end_block: z.number().default(1000),
+    chain_end_block: z.number().default(100),
     session_start_block: z.number().default(1),
-    session_stop_block: z.number().default(1000),
+    session_stop_block: z.number().default(100),
     http_port: z.number().default(8889),
     ship_port: z.number().default(18999)
 });
 
 export type ChainDescriptor = z.infer<typeof ChainDescriptorSchema>;
+
+export const SetChainResponseSchema = z.object({
+  blocks: z.record(z.array(z.tuple([z.number(), z.string()])))
+});
+
+export type SetChainResponse = z.infer<typeof SetChainResponseSchema>;
 
 
 export class MockChain {
@@ -70,7 +76,7 @@ export class MockChain {
 
                 switch (requestType) {
                     case "get_blocks_request_v0":
-                        this.ackBlocks(ws, 1);
+                        this.ackBlocks(ws, 10);
                         break;
 
                     case "get_status_request_v0":
@@ -183,7 +189,9 @@ export class MockChain {
         console.log('Network is down');
     }
 
-    async setChain(descriptor: ChainDescriptor) {
+    async setChain(descriptor: ChainDescriptor): Promise<SetChainResponse> {
+        descriptor = ChainDescriptorSchema.parse(descriptor);
+
         if (this.networkUp)
             await this.stopNetwork();
 
@@ -194,14 +202,20 @@ export class MockChain {
         this.jumps = new Map(descriptor.jumps.entries());
 
         this.blockInfo = new Map();
+        const resp = {};
 
-        for(let j = 0; j <= descriptor.jumps.length; j++)  {
+        for(let j = 0; j <= descriptor.jumps.length; j++) {
             const blocks: Map<number, string> = new Map();
-            for (let blockNum = descriptor.chain_start_block; blockNum <= descriptor.chain_end_block; blockNum++)
-                blocks.set(blockNum, randomHash());
+            const blocks_resp = [];
+            for (let blockNum = descriptor.chain_start_block; blockNum <= descriptor.chain_end_block; blockNum++) {
+                const block: [number, string] = [blockNum, randomHash()]
+                blocks.set(blockNum, block[1]);
+                blocks_resp.push(block)
+            }
 
             this.blockInfo.set(j, blocks);
-        };
+            resp[j] = blocks_resp;
+        }
         console.log(`CONTROL: set chain to:\n${JSON.stringify(descriptor, null, 4)}`);
 
         this.clientAckBlock = this.descriptor.session_start_block - 1;
@@ -209,6 +223,8 @@ export class MockChain {
         console.log(`CONTROL: set session to ${descriptor.session_start_block}-${descriptor.session_stop_block}`);
 
         await this.startNetwork();
+
+        return SetChainResponseSchema.parse({blocks: resp});
     }
 
     getBlockHash(blockNum: number) {
@@ -338,7 +354,7 @@ export class MockChain {
     }
 
     setBlock(num: number) {
-        this.clientAckBlock = num + 1;
+        this.clientAckBlock = num + (this.lastSent - num);
         this.lastSent = num;
         this.forkDB.block_id = this.getBlockHash(num);
         this.forkDB.block_num = num;

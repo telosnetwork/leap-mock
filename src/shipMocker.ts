@@ -13,8 +13,8 @@ controlApp.use(bodyParser.json());
 
 controlApp.post('/set_chain', async (req, res) => {
     const data: ChainDescriptor = req.body;
-    await chain.setChain(data);
-    res.json({ result: 'ok'});
+    const chainInfo = await chain.setChain(data);
+    res.json({ result: chainInfo });
 });
 
 controlApp.listen(controlPort, () => {
